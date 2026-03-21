@@ -1,3 +1,3 @@
 module.exports = {
-  url: "mongodb://mongodb:27017/dd_db"
+  url: "mongodb+srv://taskmanager:iRM6ZC5xoccldtnq@taskmanager.38totym.mongodb.net/?appName=taskmanager"
 };
