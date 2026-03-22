@@ -16,11 +16,12 @@ services:
     container_name: backend
     restart: always
     ports:
-      - "8080:8080"
+      - "8080:5000"
     depends_on:
       - mongodb
     environment:
-      - DB_HOST=mongodb
+      - PORT=5000
+      - MONGODB_URI=mongodb://mongodb:27017/project_management
     networks:
       - app-network
 
@@ -29,9 +30,11 @@ services:
     container_name: frontend
     restart: always
     ports:
-      - "80:80"
+      - "80:3000"
     depends_on:
       - backend
+    environment:
+      - BACKEND_URL=http://backend:5000
     networks:
       - app-network
 
