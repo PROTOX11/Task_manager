@@ -68,9 +68,9 @@ export default function TasksPage() {
     }
   };
 
-  const toggleTaskStatus = (task: Task) => {
+  const toggleTaskStatus = async (task: Task) => {
     const newStatus = task.status === "done" ? "todo" : "done";
-    updateTask(task.id, { status: newStatus });
+    await updateTask(task.id, { status: newStatus });
   };
 
   return (

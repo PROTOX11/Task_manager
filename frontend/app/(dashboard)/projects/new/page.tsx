@@ -23,7 +23,7 @@ export default function NewProjectPage() {
     setIsLoading(true);
 
     try {
-      const project = createProject({ name, description });
+      const project = await createProject({ name, description });
       toast.success("Project created successfully!");
       router.push(`/projects/${project.id}`);
     } catch {

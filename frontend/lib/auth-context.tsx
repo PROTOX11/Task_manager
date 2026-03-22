@@ -2,14 +2,16 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import type { User } from "./types";
+import { apiRequest, clearToken, getToken, setToken } from "./api";
 
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   signup: (data: SignupData) => Promise<void>;
+  signupAdmin: (data: AdminSignupData) => Promise<void>;
   logout: () => void;
-  updateProfile: (data: Partial<User>) => void;
+  updateProfile: (data: Partial<User>) => Promise<void>;
 }
 
 interface SignupData {
@@ -19,98 +21,139 @@ interface SignupData {
   lastName: string;
 }
 
+interface AdminSignupData extends SignupData {
+  paymentAmount: number;
+  paymentReference: string;
+}
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Demo users for the application
-const DEMO_USERS: (User & { password: string })[] = [
-  {
-    id: "1",
-    email: "admin@demo.com",
-    password: "admin123",
-    firstName: "Admin",
-    lastName: "User",
-    role: "admin",
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "2",
-    email: "user@demo.com",
-    password: "user123",
-    firstName: "John",
-    lastName: "Doe",
-    role: "user",
-    createdAt: new Date().toISOString(),
-  },
-];
+interface ApiUser {
+  id: string;
+  name: string;
+  email: string;
+  role: "admin" | "developer";
+  createdAt?: string;
+}
+
+const splitName = (name: string) => {
+  const parts = (name || "").trim().split(/\s+/);
+  const firstName = parts[0] || "User";
+  const lastName = parts.slice(1).join(" ") || "";
+  return { firstName, lastName };
+};
+
+const mapApiUser = (user: ApiUser): User => {
+  const { firstName, lastName } = splitName(user.name);
+  return {
+    id: user.id,
+    email: user.email,
+    firstName,
+    lastName,
+    role: user.role,
+    createdAt: user.createdAt || new Date().toISOString(),
+  };
+};
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check for stored user on mount
-    const storedUser = localStorage.getItem("user");
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    }
-    setIsLoading(false);
+    const bootstrap = async () => {
+      const token = getToken();
+      if (!token) {
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        const response = await apiRequest<{ user: ApiUser }>("/auth/profile");
+        setUser(mapApiUser(response.user));
+      } catch {
+        clearToken();
+        setUser(null);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    bootstrap();
   }, []);
 
   const login = async (email: string, password: string) => {
-    // Simulate API delay
-    await new Promise((resolve) => setTimeout(resolve, 500));
-
-    const foundUser = DEMO_USERS.find(
-      (u) => u.email === email && u.password === password
+    const response = await apiRequest<{ token: string; user: ApiUser }>(
+      "/auth/login",
+      {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+        auth: false,
+      }
     );
-
-    if (!foundUser) {
-      throw new Error("Invalid email or password");
-    }
-
-    const { password: _, ...userWithoutPassword } = foundUser;
-    setUser(userWithoutPassword);
-    localStorage.setItem("user", JSON.stringify(userWithoutPassword));
+    setToken(response.token);
+    setUser(mapApiUser(response.user));
   };
 
   const signup = async (data: SignupData) => {
-    // Simulate API delay
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    const response = await apiRequest<{ token: string; user: ApiUser }>(
+      "/auth/signup",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          name: `${data.firstName} ${data.lastName}`.trim(),
+          email: data.email,
+          password: data.password,
+          role: "developer",
+        }),
+        auth: false,
+      }
+    );
+    setToken(response.token);
+    setUser(mapApiUser(response.user));
+  };
 
-    // Check if user already exists
-    if (DEMO_USERS.some((u) => u.email === data.email)) {
-      throw new Error("Email already exists");
-    }
-
-    const newUser: User = {
-      id: String(DEMO_USERS.length + 1),
-      email: data.email,
-      firstName: data.firstName,
-      lastName: data.lastName,
-      role: "user",
-      createdAt: new Date().toISOString(),
-    };
-
-    setUser(newUser);
-    localStorage.setItem("user", JSON.stringify(newUser));
+  const signupAdmin = async (data: AdminSignupData) => {
+    const response = await apiRequest<{ token: string; user: ApiUser }>(
+      "/auth/signup/admin",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          name: `${data.firstName} ${data.lastName}`.trim(),
+          email: data.email,
+          password: data.password,
+          paymentAmount: data.paymentAmount,
+          paymentReference: data.paymentReference,
+          paymentStatus: "paid",
+        }),
+        auth: false,
+      }
+    );
+    setToken(response.token);
+    setUser(mapApiUser(response.user));
   };
 
   const logout = () => {
+    clearToken();
     setUser(null);
-    localStorage.removeItem("user");
   };
 
-  const updateProfile = (data: Partial<User>) => {
+  const updateProfile = async (data: Partial<User>) => {
     if (user) {
-      const updatedUser = { ...user, ...data };
-      setUser(updatedUser);
-      localStorage.setItem("user", JSON.stringify(updatedUser));
+      const name = `${data.firstName || user.firstName} ${data.lastName || user.lastName}`.trim();
+      const response = await apiRequest<{ user: ApiUser }>("/auth/profile", {
+        method: "PUT",
+        body: JSON.stringify({
+          name,
+          email: data.email || user.email,
+        }),
+      });
+      setUser(mapApiUser(response.user));
     }
   };
 
   return (
     <AuthContext.Provider
-      value={{ user, isLoading, login, signup, logout, updateProfile }}
+      value={{ user, isLoading, login, signup, signupAdmin, logout, updateProfile }}
     >
       {children}
     </AuthContext.Provider>

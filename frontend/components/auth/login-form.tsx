@@ -26,8 +26,10 @@ export function LoginForm() {
       await login(email, password);
       toast.success("Welcome back!");
       router.push("/dashboard");
-    } catch {
-      toast.error("Invalid email or password");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Invalid email or password";
+      toast.error(message);
     } finally {
       setIsLoading(false);
     }
@@ -67,11 +69,6 @@ export function LoginForm() {
                 required
               />
             </Field>
-            <div className="rounded-lg bg-muted p-3 text-sm">
-              <p className="font-medium text-muted-foreground">Demo Credentials:</p>
-              <p className="text-muted-foreground">Admin: admin@demo.com / admin123</p>
-              <p className="text-muted-foreground">User: user@demo.com / user123</p>
-            </div>
           </CardContent>
           <CardFooter className="flex flex-col gap-4">
             <Button type="submit" className="w-full" disabled={isLoading}>

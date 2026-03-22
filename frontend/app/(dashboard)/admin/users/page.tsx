@@ -32,7 +32,7 @@ const demoUsers = [
     email: "user@demo.com",
     firstName: "John",
     lastName: "Doe",
-    role: "user",
+    role: "developer",
     createdAt: new Date().toISOString(),
   },
 ];
@@ -101,9 +101,9 @@ export default function AdminUsersPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold">
-                  {demoUsers.filter((u) => u.role === "user").length}
+                  {demoUsers.filter((u) => u.role === "developer").length}
                 </p>
-                <p className="text-sm text-muted-foreground">Regular Users</p>
+                <p className="text-sm text-muted-foreground">Developers</p>
               </div>
             </div>
           </CardContent>
@@ -147,7 +147,7 @@ export default function AdminUsersPage() {
                   <TableCell>{u.email}</TableCell>
                   <TableCell>
                     <Badge variant={u.role === "admin" ? "default" : "secondary"}>
-                      {u.role === "admin" ? "Administrator" : "User"}
+                      {u.role === "admin" ? "Administrator" : "Developer"}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-muted-foreground">

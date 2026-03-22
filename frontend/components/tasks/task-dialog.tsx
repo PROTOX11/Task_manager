@@ -53,8 +53,8 @@ export function TaskDialog({ task, project, onClose }: TaskDialogProps) {
 
   if (!task) return null;
 
-  const handleSave = () => {
-    updateTask(task.id, {
+  const handleSave = async () => {
+    await updateTask(task.id, {
       title: editedTitle,
       description: editedDescription,
     });
@@ -62,33 +62,33 @@ export function TaskDialog({ task, project, onClose }: TaskDialogProps) {
     toast.success("Task updated");
   };
 
-  const handleDelete = () => {
-    deleteTask(task.id);
+  const handleDelete = async () => {
+    await deleteTask(task.id);
     onClose();
     toast.success("Task deleted");
   };
 
-  const handleAddComment = () => {
+  const handleAddComment = async () => {
     if (!newComment.trim()) return;
-    addComment(task.id, newComment);
+    await addComment(task.id, newComment);
     setNewComment("");
     toast.success("Comment added");
   };
 
-  const handleAddSubtask = () => {
+  const handleAddSubtask = async () => {
     if (!newSubtask.trim()) return;
-    addSubtask(task.id, newSubtask);
+    await addSubtask(task.id, newSubtask);
     setNewSubtask("");
     toast.success("Subtask added");
   };
 
-  const handleStatusChange = (status: Task["status"]) => {
-    updateTask(task.id, { status });
+  const handleStatusChange = async (status: Task["status"]) => {
+    await updateTask(task.id, { status });
     toast.success("Status updated");
   };
 
-  const handlePriorityChange = (priority: Task["priority"]) => {
-    updateTask(task.id, { priority });
+  const handlePriorityChange = async (priority: Task["priority"]) => {
+    await updateTask(task.id, { priority });
     toast.success("Priority updated");
   };
 

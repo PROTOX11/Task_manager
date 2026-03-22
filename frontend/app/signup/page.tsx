@@ -8,8 +8,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldLabel } from "@/components/ui/field";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { CheckSquare, Loader2 } from "lucide-react";
+
+const ADMIN_SIGNUP_STORAGE_KEY = "pending-admin-signup";
 
 export default function SignupPage() {
   const [email, setEmail] = useState("");
@@ -17,6 +20,7 @@ export default function SignupPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [role, setRole] = useState<"developer" | "admin">("developer");
   const [isLoading, setIsLoading] = useState(false);
   const { signup } = useAuth();
   const router = useRouter();
@@ -32,11 +36,22 @@ export default function SignupPage() {
     setIsLoading(true);
 
     try {
-      await signup({ email, password, firstName, lastName });
-      toast.success("Account created successfully!");
-      router.push("/dashboard");
-    } catch {
-      toast.error("Failed to create account");
+      if (role === "developer") {
+        await signup({ email, password, firstName, lastName });
+        toast.success("Developer account created successfully!");
+        router.push("/dashboard");
+      } else {
+        sessionStorage.setItem(
+          ADMIN_SIGNUP_STORAGE_KEY,
+          JSON.stringify({ email, password, firstName, lastName })
+        );
+        toast.success("Continue to payment to activate your admin account.");
+        router.push("/signup/admin-payment");
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to create account";
+      toast.error(message);
     } finally {
       setIsLoading(false);
     }
@@ -55,7 +70,6 @@ export default function SignupPage() {
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
-              <h1 className="text-red-500 text-5xl">TEST</h1>
               <Field>
                 <FieldLabel htmlFor="firstName">First Name</FieldLabel>
                 <Input
@@ -77,6 +91,18 @@ export default function SignupPage() {
                 />
               </Field>
             </div>
+            <Field>
+              <FieldLabel htmlFor="role">Account Type</FieldLabel>
+              <Select value={role} onValueChange={(value) => setRole(value as "developer" | "admin")}>
+                <SelectTrigger id="role" className="w-full">
+                  <SelectValue placeholder="Select account type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="developer">Developer</SelectItem>
+                  <SelectItem value="admin">Admin</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
             <Field>
               <FieldLabel htmlFor="email">Email</FieldLabel>
               <Input
@@ -116,7 +142,7 @@ export default function SignupPage() {
           <CardFooter className="flex flex-col gap-4">
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Create Account
+              {role === "admin" ? "Continue to Payment" : "Create Account"}
             </Button>
             <p className="text-sm text-muted-foreground">
               Already have an account?{" "}

@@ -24,7 +24,7 @@ export default function ProfilePage() {
     setIsLoading(true);
 
     try {
-      updateProfile({ firstName, lastName });
+      await updateProfile({ firstName, lastName });
       toast.success("Profile updated successfully!");
     } catch {
       toast.error("Failed to update profile");
@@ -67,7 +67,7 @@ export default function ProfilePage() {
               <div className="mt-2 flex items-center gap-2">
                 <Badge variant={user.role === "admin" ? "default" : "secondary"}>
                   <Shield className="mr-1 h-3 w-3" />
-                  {user.role === "admin" ? "Administrator" : "User"}
+                  {user.role === "admin" ? "Administrator" : "Developer"}
                 </Badge>
                 <span className="flex items-center gap-1 text-xs text-muted-foreground">
                   <Calendar className="h-3 w-3" />

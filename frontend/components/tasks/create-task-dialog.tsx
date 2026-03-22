@@ -50,7 +50,7 @@ export function CreateTaskDialog({
     setIsLoading(true);
 
     try {
-      createTask({
+      await createTask({
         title,
         description,
         panelId,

@@ -1,27 +1,28 @@
 "use client";
 
-import { createContext, useContext, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import type { Project, Panel, Task, ProjectRequest, User } from "./types";
 import { useAuth } from "./auth-context";
+import { apiRequest } from "./api";
 
 interface DataContextType {
   projects: Project[];
   requests: ProjectRequest[];
-  createProject: (data: CreateProjectData) => Project;
-  updateProject: (id: string, data: Partial<Project>) => void;
-  deleteProject: (id: string) => void;
-  addPanel: (projectId: string, name: string) => Panel;
-  updatePanel: (projectId: string, panelId: string, name: string) => void;
-  deletePanel: (projectId: string, panelId: string) => void;
-  createTask: (data: CreateTaskData) => Task;
-  updateTask: (taskId: string, data: Partial<Task>) => void;
-  deleteTask: (taskId: string) => void;
-  moveTask: (taskId: string, newPanelId: string) => void;
-  addComment: (taskId: string, content: string) => void;
-  toggleSubtask: (taskId: string, subtaskId: string) => void;
-  addSubtask: (taskId: string, title: string) => void;
-  sendInvitation: (projectId: string, email: string, message?: string) => void;
-  respondToRequest: (requestId: string, accept: boolean) => void;
+  createProject: (data: CreateProjectData) => Promise<Project>;
+  updateProject: (id: string, data: Partial<Project>) => Promise<void>;
+  deleteProject: (id: string) => Promise<void>;
+  addPanel: (projectId: string, name: string) => Promise<Panel>;
+  updatePanel: (projectId: string, panelId: string, name: string) => Promise<void>;
+  deletePanel: (projectId: string, panelId: string) => Promise<void>;
+  createTask: (data: CreateTaskData) => Promise<Task>;
+  updateTask: (taskId: string, data: Partial<Task>) => Promise<void>;
+  deleteTask: (taskId: string) => Promise<void>;
+  moveTask: (taskId: string, newPanelId: string) => Promise<void>;
+  addComment: (taskId: string, content: string) => Promise<void>;
+  toggleSubtask: (taskId: string, subtaskId: string) => Promise<void>;
+  addSubtask: (taskId: string, title: string) => Promise<void>;
+  sendInvitation: (projectId: string, email: string, message?: string) => Promise<void>;
+  respondToRequest: (requestId: string, accept: boolean) => Promise<void>;
   getProjectById: (id: string) => Project | undefined;
   getTaskById: (id: string) => Task | undefined;
   getMyTasks: () => Task[];
@@ -43,375 +44,272 @@ interface CreateTaskData {
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
+const splitName = (name: string) => {
+  const parts = (name || "").trim().split(/\s+/);
+  return {
+    firstName: parts[0] || "User",
+    lastName: parts.slice(1).join(" ") || "",
+  };
+};
 
-// Initial demo data
-const createInitialData = (currentUser: User | null): { projects: Project[]; requests: ProjectRequest[] } => {
-  if (!currentUser) return { projects: [], requests: [] };
-
-  const demoUser2: User = {
-    id: "2",
-    email: "user@demo.com",
-    firstName: "John",
-    lastName: "Doe",
-    role: "user",
+const mapApiUser = (user: { _id?: string; id?: string; name: string; email: string; role?: string }): User => {
+  const { firstName, lastName } = splitName(user.name);
+  return {
+    id: (user.id || user._id || "").toString(),
+    email: user.email,
+    firstName,
+    lastName,
+    role: user.role === "admin" ? "admin" : "developer",
     createdAt: new Date().toISOString(),
   };
+};
 
-  const projects: Project[] = [
-    {
-      id: "proj-1",
-      name: "Website Redesign",
-      description: "Complete redesign of the company website with modern UI/UX",
-      status: "active",
-      owner: currentUser,
-      members: [
-        { user: currentUser, role: "owner", joinedAt: new Date().toISOString() },
-      ],
-      panels: [
-        {
-          id: "panel-1",
-          name: "To Do",
-          order: 0,
-          projectId: "proj-1",
-          tasks: [
-            {
-              id: "task-1",
-              title: "Design homepage mockup",
-              description: "Create initial mockup for the homepage redesign",
-              status: "todo",
-              priority: "high",
-              reporter: currentUser,
-              panelId: "panel-1",
-              projectId: "proj-1",
-              dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-              attachments: [],
-              comments: [],
-              subtasks: [
-                { id: "st-1", title: "Research competitors", completed: true },
-                { id: "st-2", title: "Create wireframes", completed: false },
-              ],
-              order: 0,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            },
-          ],
-        },
-        {
-          id: "panel-2",
-          name: "In Progress",
-          order: 1,
-          projectId: "proj-1",
-          tasks: [
-            {
-              id: "task-2",
-              title: "Set up project structure",
-              description: "Initialize the project with Next.js and configure Tailwind CSS",
-              status: "in_progress",
-              priority: "medium",
-              assignee: currentUser,
-              reporter: currentUser,
-              panelId: "panel-2",
-              projectId: "proj-1",
-              attachments: [],
-              comments: [
-                {
-                  id: "comment-1",
-                  content: "Started working on this today",
-                  author: currentUser,
-                  createdAt: new Date().toISOString(),
-                  updatedAt: new Date().toISOString(),
-                },
-              ],
-              subtasks: [],
-              order: 0,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            },
-          ],
-        },
-        {
-          id: "panel-3",
-          name: "Review",
-          order: 2,
-          projectId: "proj-1",
-          tasks: [],
-        },
-        {
-          id: "panel-4",
-          name: "Done",
-          order: 3,
-          projectId: "proj-1",
-          tasks: [
-            {
-              id: "task-3",
-              title: "Project kickoff meeting",
-              description: "Initial meeting to discuss project goals and timeline",
-              status: "done",
-              priority: "low",
-              reporter: currentUser,
-              panelId: "panel-4",
-              projectId: "proj-1",
-              attachments: [],
-              comments: [],
-              subtasks: [],
-              order: 0,
-              createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-              updatedAt: new Date().toISOString(),
-            },
-          ],
-        },
-      ],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: "proj-2",
-      name: "Mobile App Development",
-      description: "Build a cross-platform mobile application",
-      status: "active",
-      owner: currentUser,
-      members: [
-        { user: currentUser, role: "owner", joinedAt: new Date().toISOString() },
-      ],
-      panels: [
-        {
-          id: "panel-5",
-          name: "Backlog",
-          order: 0,
-          projectId: "proj-2",
-          tasks: [
-            {
-              id: "task-4",
-              title: "User authentication flow",
-              description: "Implement login, signup, and password reset",
-              status: "todo",
-              priority: "urgent",
-              reporter: currentUser,
-              panelId: "panel-5",
-              projectId: "proj-2",
-              dueDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
-              attachments: [],
-              comments: [],
-              subtasks: [],
-              order: 0,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            },
-          ],
-        },
-        {
-          id: "panel-6",
-          name: "In Development",
-          order: 1,
-          projectId: "proj-2",
-          tasks: [],
-        },
-        {
-          id: "panel-7",
-          name: "Completed",
-          order: 2,
-          projectId: "proj-2",
-          tasks: [],
-        },
-      ],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-  ];
+const mapTaskStatus = (status: string): Task["status"] => {
+  if (status === "in-progress") return "in_progress";
+  if (status === "review") return "review";
+  if (status === "completed") return "done";
+  return "todo";
+};
 
-  const requests: ProjectRequest[] = [
-    {
-      id: "req-1",
-      project: projects[0],
-      sender: demoUser2,
-      recipient: currentUser,
-      status: "pending",
-      message: "I would like to join your website redesign project!",
-      createdAt: new Date().toISOString(),
-    },
-  ];
-
-  return { projects, requests };
+const toApiTaskStatus = (status: Task["status"]): string => {
+  if (status === "in_progress") return "in-progress";
+  if (status === "review") return "review";
+  if (status === "done") return "completed";
+  return "pending";
 };
 
 export function DataProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [requests, setRequests] = useState<ProjectRequest[]>([]);
-  const [initialized, setInitialized] = useState(false);
+  const loadProjects = async () => {
+    if (!user) return;
+    const projectResponse = await apiRequest<{ projects: Array<any> }>("/projects");
+    const normalizedProjects = await Promise.all(
+      projectResponse.projects.map(async (apiProject) => {
+        const projectId = apiProject._id.toString();
+        const [panelResponse, taskResponse] = await Promise.all([
+          apiRequest<{ panels: Array<any> }>(`/panels/project/${projectId}`),
+          apiRequest<{ tasks: Array<any> }>(`/tasks/project/${projectId}`),
+        ]);
 
-  // Initialize data when user changes
-  if (user && !initialized) {
-    const initial = createInitialData(user);
-    setProjects(initial.projects);
-    setRequests(initial.requests);
-    setInitialized(true);
-  }
+        const tasksByPanel: Record<string, Task[]> = {};
+        const apiTasks = taskResponse.tasks || [];
+        apiTasks.forEach((apiTask: any, index: number) => {
+          const panelId = apiTask.panelId?.toString() || "";
+          if (!tasksByPanel[panelId]) tasksByPanel[panelId] = [];
+          tasksByPanel[panelId].push({
+            id: apiTask._id.toString(),
+            title: apiTask.title,
+            description: apiTask.description || "",
+            status: mapTaskStatus(apiTask.status),
+            priority: apiTask.priority || "medium",
+            assignee: apiTask.assignedDeveloper ? mapApiUser(apiTask.assignedDeveloper) : undefined,
+            reporter: apiTask.createdBy ? mapApiUser(apiTask.createdBy) : user,
+            panelId,
+            projectId,
+            dueDate: apiTask.deadline ? new Date(apiTask.deadline).toISOString() : undefined,
+            attachments: [],
+            comments: [],
+            subtasks: [],
+            order: index,
+            createdAt: apiTask.createdAt || new Date().toISOString(),
+            updatedAt: apiTask.updatedAt || new Date().toISOString(),
+          });
+        });
 
-  if (!user && initialized) {
-    setProjects([]);
-    setRequests([]);
-    setInitialized(false);
-  }
+        const owner = apiProject.createdBy ? mapApiUser(apiProject.createdBy) : user;
+        const developerMembers = (apiProject.developers || []).map((dev: any) => ({
+          user: mapApiUser(dev),
+          role: "member" as const,
+          joinedAt: new Date().toISOString(),
+        }));
+        const members = [{ user: owner, role: "owner" as const, joinedAt: new Date().toISOString() }, ...developerMembers];
 
-  const createProject = (data: CreateProjectData): Project => {
-    if (!user) throw new Error("Not authenticated");
-
-    const newProject: Project = {
-      id: `proj-${Date.now()}`,
-      name: data.name,
-      description: data.description,
-      status: "active",
-      owner: user,
-      members: [{ user, role: "owner", joinedAt: new Date().toISOString() }],
-      panels: [
-        { id: `panel-${Date.now()}-1`, name: "To Do", order: 0, projectId: "", tasks: [] },
-        { id: `panel-${Date.now()}-2`, name: "In Progress", order: 1, projectId: "", tasks: [] },
-        { id: `panel-${Date.now()}-3`, name: "Done", order: 2, projectId: "", tasks: [] },
-      ],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    newProject.panels = newProject.panels.map((p) => ({ ...p, projectId: newProject.id }));
-
-    setProjects((prev) => [...prev, newProject]);
-    return newProject;
+        return {
+          id: projectId,
+          name: apiProject.name,
+          description: apiProject.description || "",
+          status: apiProject.status || "active",
+          owner,
+          members,
+          panels: (panelResponse.panels || []).map((p: any) => ({
+            id: p._id.toString(),
+            name: p.name,
+            order: p.order || 0,
+            projectId,
+            tasks: tasksByPanel[p._id.toString()] || [],
+          })),
+          createdAt: apiProject.createdAt || new Date().toISOString(),
+          updatedAt: apiProject.updatedAt || new Date().toISOString(),
+        } as Project;
+      })
+    );
+    setProjects(normalizedProjects);
   };
 
-  const updateProject = (id: string, data: Partial<Project>) => {
+  const loadRequests = async () => {
+    if (!user) return;
+    const response = await apiRequest<{ requests: Array<any> }>("/requests/history");
+    const normalized = (response.requests || []).map((r: any) => ({
+      id: r._id.toString(),
+      project: {
+        id: r.projectId?._id?.toString() || "",
+        name: r.projectId?.name || "Project",
+        description: r.projectId?.description || "",
+        status: "active" as const,
+        owner: user,
+        members: [],
+        panels: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      sender: r.senderId ? mapApiUser(r.senderId) : user,
+      recipient: user,
+      status: r.status,
+      message: r.message,
+      createdAt: r.createdAt || new Date().toISOString(),
+    }));
+    setRequests(normalized);
+  };
+
+  useEffect(() => {
+    if (!user) {
+      setProjects([]);
+      setRequests([]);
+      return;
+    }
+    void Promise.all([loadProjects(), loadRequests()]);
+  }, [user]);
+
+  const createProject = async (data: CreateProjectData): Promise<Project> => {
+    const response = await apiRequest<{ project: any }>("/projects", {
+      method: "POST",
+      body: JSON.stringify({
+        name: data.name,
+        description: data.description,
+        panels: [{ name: "To Do" }, { name: "In Progress" }, { name: "Done" }],
+      }),
+    });
+    await loadProjects();
+    return {
+      id: response.project._id.toString(),
+      name: response.project.name,
+      description: response.project.description || "",
+      status: response.project.status || "active",
+      owner: user!,
+      members: [{ user: user!, role: "owner", joinedAt: new Date().toISOString() }],
+      panels: [],
+      createdAt: response.project.createdAt || new Date().toISOString(),
+      updatedAt: response.project.updatedAt || new Date().toISOString(),
+    };
+  };
+
+  const updateProject = async (id: string, data: Partial<Project>) => {
+    await apiRequest(`/projects/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        name: data.name,
+        description: data.description,
+        status: data.status,
+      }),
+    });
+    await loadProjects();
+  };
+
+  const deleteProject = async (id: string) => {
+    await apiRequest(`/projects/${id}`, { method: "DELETE" });
+    setProjects((prev) => prev.filter((p) => p.id !== id));
+  };
+
+  const addPanel = async (projectId: string, name: string): Promise<Panel> => {
+    const response = await apiRequest<{ panel: any }>("/panels", {
+      method: "POST",
+      body: JSON.stringify({ name, projectId }),
+    });
+    await loadProjects();
+    return {
+      id: response.panel._id.toString(),
+      name: response.panel.name,
+      order: response.panel.order || 0,
+      projectId,
+      tasks: [],
+    };
+  };
+
+  const updatePanel = async (_projectId: string, panelId: string, name: string) => {
+    await apiRequest(`/panels/${panelId}`, {
+      method: "PUT",
+      body: JSON.stringify({ name }),
+    });
+    await loadProjects();
+  };
+
+  const deletePanel = async (projectId: string, panelId: string) => {
+    await apiRequest(`/panels/${panelId}`, { method: "DELETE" });
     setProjects((prev) =>
       prev.map((p) =>
-        p.id === id ? { ...p, ...data, updatedAt: new Date().toISOString() } : p
+        p.id === projectId ? { ...p, panels: p.panels.filter((panel) => panel.id !== panelId) } : p
       )
     );
   };
 
-  const deleteProject = (id: string) => {
-    setProjects((prev) => prev.filter((p) => p.id !== id));
-  };
-
-  const addPanel = (projectId: string, name: string): Panel => {
-    const newPanel: Panel = {
-      id: `panel-${Date.now()}`,
-      name,
-      order: 0,
-      projectId,
-      tasks: [],
-    };
-
-    setProjects((prev) =>
-      prev.map((p) => {
-        if (p.id === projectId) {
-          const maxOrder = Math.max(...p.panels.map((panel) => panel.order), -1);
-          return {
-            ...p,
-            panels: [...p.panels, { ...newPanel, order: maxOrder + 1 }],
-            updatedAt: new Date().toISOString(),
-          };
-        }
-        return p;
-      })
-    );
-
-    return newPanel;
-  };
-
-  const updatePanel = (projectId: string, panelId: string, name: string) => {
-    setProjects((prev) =>
-      prev.map((p) => {
-        if (p.id === projectId) {
-          return {
-            ...p,
-            panels: p.panels.map((panel) =>
-              panel.id === panelId ? { ...panel, name } : panel
-            ),
-            updatedAt: new Date().toISOString(),
-          };
-        }
-        return p;
-      })
-    );
-  };
-
-  const deletePanel = (projectId: string, panelId: string) => {
-    setProjects((prev) =>
-      prev.map((p) => {
-        if (p.id === projectId) {
-          return {
-            ...p,
-            panels: p.panels.filter((panel) => panel.id !== panelId),
-            updatedAt: new Date().toISOString(),
-          };
-        }
-        return p;
-      })
-    );
-  };
-
-  const createTask = (data: CreateTaskData): Task => {
-    if (!user) throw new Error("Not authenticated");
-
-    const newTask: Task = {
-      id: `task-${Date.now()}`,
-      title: data.title,
-      description: data.description,
-      status: "todo",
-      priority: data.priority,
-      reporter: user,
-      panelId: data.panelId,
-      projectId: data.projectId,
-      dueDate: data.dueDate,
+  const createTask = async (data: CreateTaskData): Promise<Task> => {
+    const response = await apiRequest<{ task: any }>("/tasks", {
+      method: "POST",
+      body: JSON.stringify({
+        title: data.title,
+        description: data.description,
+        projectId: data.projectId,
+        panelId: data.panelId,
+        assignedDeveloper: data.assigneeId,
+        priority: data.priority,
+        deadline: data.dueDate,
+      }),
+    });
+    await loadProjects();
+    return {
+      id: response.task._id.toString(),
+      title: response.task.title,
+      description: response.task.description || "",
+      status: mapTaskStatus(response.task.status),
+      priority: response.task.priority,
+      reporter: user!,
+      panelId: response.task.panelId?.toString() || data.panelId,
+      projectId: response.task.projectId?.toString() || data.projectId,
+      dueDate: response.task.deadline ? new Date(response.task.deadline).toISOString() : undefined,
       attachments: [],
       comments: [],
       subtasks: [],
       order: 0,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: response.task.createdAt || new Date().toISOString(),
+      updatedAt: response.task.updatedAt || new Date().toISOString(),
     };
-
-    setProjects((prev) =>
-      prev.map((p) => {
-        if (p.id === data.projectId) {
-          return {
-            ...p,
-            panels: p.panels.map((panel) => {
-              if (panel.id === data.panelId) {
-                const maxOrder = Math.max(...panel.tasks.map((t) => t.order), -1);
-                return {
-                  ...panel,
-                  tasks: [...panel.tasks, { ...newTask, order: maxOrder + 1 }],
-                };
-              }
-              return panel;
-            }),
-            updatedAt: new Date().toISOString(),
-          };
-        }
-        return p;
-      })
-    );
-
-    return newTask;
   };
 
-  const updateTask = (taskId: string, data: Partial<Task>) => {
-    setProjects((prev) =>
-      prev.map((p) => ({
-        ...p,
-        panels: p.panels.map((panel) => ({
-          ...panel,
-          tasks: panel.tasks.map((task) =>
-            task.id === taskId
-              ? { ...task, ...data, updatedAt: new Date().toISOString() }
-              : task
-          ),
-        })),
-      }))
-    );
+  const updateTask = async (taskId: string, data: Partial<Task>) => {
+    const payload: any = {};
+    if (data.status) payload.status = toApiTaskStatus(data.status);
+    if (data.priority) payload.priority = data.priority;
+    if (data.title !== undefined) payload.title = data.title;
+    if (data.description !== undefined) payload.description = data.description;
+    if (data.panelId) payload.panelId = data.panelId;
+    if (Object.keys(payload).length === 1 && payload.status) {
+      await apiRequest(`/tasks/${taskId}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: payload.status }),
+      });
+    } else {
+      await apiRequest(`/tasks/${taskId}`, {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      });
+    }
+    await loadProjects();
   };
 
-  const deleteTask = (taskId: string) => {
+  const deleteTask = async (taskId: string) => {
+    await apiRequest(`/tasks/${taskId}`, { method: "DELETE" });
     setProjects((prev) =>
       prev.map((p) => ({
         ...p,
@@ -423,47 +321,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  const moveTask = (taskId: string, newPanelId: string) => {
-    setProjects((prev) =>
-      prev.map((p) => {
-        let taskToMove: Task | undefined;
-
-        // Find and remove the task from its current panel
-        const updatedPanels = p.panels.map((panel) => {
-          const taskIndex = panel.tasks.findIndex((t) => t.id === taskId);
-          if (taskIndex !== -1) {
-            taskToMove = { ...panel.tasks[taskIndex], panelId: newPanelId };
-            return {
-              ...panel,
-              tasks: panel.tasks.filter((t) => t.id !== taskId),
-            };
-          }
-          return panel;
-        });
-
-        // Add the task to the new panel
-        if (taskToMove) {
-          return {
-            ...p,
-            panels: updatedPanels.map((panel) => {
-              if (panel.id === newPanelId) {
-                return {
-                  ...panel,
-                  tasks: [...panel.tasks, taskToMove!],
-                };
-              }
-              return panel;
-            }),
-            updatedAt: new Date().toISOString(),
-          };
-        }
-
-        return p;
-      })
-    );
+  const moveTask = async (taskId: string, newPanelId: string) => {
+    await updateTask(taskId, { panelId: newPanelId });
   };
 
-  const addComment = (taskId: string, content: string) => {
+  const addComment = async (taskId: string, content: string) => {
     if (!user) return;
 
     const newComment = {
@@ -489,7 +351,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  const toggleSubtask = (taskId: string, subtaskId: string) => {
+  const toggleSubtask = async (taskId: string, subtaskId: string) => {
     setProjects((prev) =>
       prev.map((p) => ({
         ...p,
@@ -510,7 +372,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  const addSubtask = (taskId: string, title: string) => {
+  const addSubtask = async (taskId: string, title: string) => {
     const newSubtask = {
       id: `subtask-${Date.now()}`,
       title,
@@ -532,53 +394,26 @@ export function DataProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  const sendInvitation = (projectId: string, email: string, message?: string) => {
+  const sendInvitation = async (projectId: string, email: string, message?: string) => {
     if (!user) return;
-
     const project = projects.find((p) => p.id === projectId);
     if (!project) return;
 
-    const newRequest: ProjectRequest = {
-      id: `req-${Date.now()}`,
-      project,
-      sender: user,
-      recipient: { id: `user-${Date.now()}`, email, firstName: email.split("@")[0], lastName: "", role: "user", createdAt: new Date().toISOString() },
-      status: "pending",
-      message,
-      createdAt: new Date().toISOString(),
-    };
-
-    setRequests((prev) => [...prev, newRequest]);
+    const usersResponse = await apiRequest<{ users: Array<any> }>("/auth/users");
+    const developer = (usersResponse.users || []).find((u) => u.email === email);
+    if (!developer) throw new Error("Developer not found");
+    await apiRequest(`/projects/${projectId}/invite`, {
+      method: "POST",
+      body: JSON.stringify({ developerId: developer._id, message }),
+    });
+    await loadRequests();
   };
 
-  const respondToRequest = (requestId: string, accept: boolean) => {
-    setRequests((prev) =>
-      prev.map((r) =>
-        r.id === requestId
-          ? { ...r, status: accept ? "accepted" : "rejected" }
-          : r
-      )
-    );
-
-    if (accept) {
-      const request = requests.find((r) => r.id === requestId);
-      if (request && user) {
-        setProjects((prev) =>
-          prev.map((p) => {
-            if (p.id === request.project.id) {
-              return {
-                ...p,
-                members: [
-                  ...p.members,
-                  { user: request.sender, role: "member", joinedAt: new Date().toISOString() },
-                ],
-              };
-            }
-            return p;
-          })
-        );
-      }
-    }
+  const respondToRequest = async (requestId: string, accept: boolean) => {
+    await apiRequest(`/requests/${requestId}/${accept ? "accept" : "reject"}`, {
+      method: "PUT",
+    });
+    await Promise.all([loadProjects(), loadRequests()]);
   };
 
   const getProjectById = (id: string) => projects.find((p) => p.id === id);

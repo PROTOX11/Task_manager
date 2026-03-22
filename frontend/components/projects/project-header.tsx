@@ -39,23 +39,23 @@ export function ProjectHeader({ project }: ProjectHeaderProps) {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteMessage, setInviteMessage] = useState("");
 
-  const handleInvite = () => {
+  const handleInvite = async () => {
     if (!inviteEmail.trim()) return;
-    sendInvitation(project.id, inviteEmail, inviteMessage);
+    await sendInvitation(project.id, inviteEmail, inviteMessage);
     toast.success("Invitation sent!");
     setShowInviteDialog(false);
     setInviteEmail("");
     setInviteMessage("");
   };
 
-  const handleDelete = () => {
-    deleteProject(project.id);
+  const handleDelete = async () => {
+    await deleteProject(project.id);
     toast.success("Project deleted");
     router.push("/dashboard");
   };
 
-  const handleStatusChange = (status: Project["status"]) => {
-    updateProject(project.id, { status });
+  const handleStatusChange = async (status: Project["status"]) => {
+    await updateProject(project.id, { status });
     toast.success(`Project marked as ${status}`);
   };
 

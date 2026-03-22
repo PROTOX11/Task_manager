@@ -40,24 +40,24 @@ export function KanbanBoard({ project, onTaskClick, onAddTask }: KanbanBoardProp
   const [editingPanelName, setEditingPanelName] = useState("");
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
 
-  const handleAddPanel = () => {
+  const handleAddPanel = async () => {
     if (!newPanelName.trim()) return;
-    addPanel(project.id, newPanelName);
+    await addPanel(project.id, newPanelName);
     setNewPanelName("");
     setAddingPanel(false);
     toast.success("Panel added");
   };
 
-  const handleUpdatePanel = (panelId: string) => {
+  const handleUpdatePanel = async (panelId: string) => {
     if (!editingPanelName.trim()) return;
-    updatePanel(project.id, panelId, editingPanelName);
+    await updatePanel(project.id, panelId, editingPanelName);
     setEditingPanelId(null);
     setEditingPanelName("");
     toast.success("Panel updated");
   };
 
-  const handleDeletePanel = (panelId: string) => {
-    deletePanel(project.id, panelId);
+  const handleDeletePanel = async (panelId: string) => {
+    await deletePanel(project.id, panelId);
     toast.success("Panel deleted");
   };
 
@@ -69,9 +69,9 @@ export function KanbanBoard({ project, onTaskClick, onAddTask }: KanbanBoardProp
     e.preventDefault();
   };
 
-  const handleDrop = (panelId: string) => {
+  const handleDrop = async (panelId: string) => {
     if (draggedTask && draggedTask.panelId !== panelId) {
-      moveTask(draggedTask.id, panelId);
+      await moveTask(draggedTask.id, panelId);
       toast.success("Task moved");
     }
     setDraggedTask(null);

@@ -18,13 +18,13 @@ export default function InvitationsPage() {
   const pendingRequests = myRequests.filter((r) => r.status === "pending");
   const pastRequests = myRequests.filter((r) => r.status !== "pending");
 
-  const handleAccept = (requestId: string) => {
-    respondToRequest(requestId, true);
+  const handleAccept = async (requestId: string) => {
+    await respondToRequest(requestId, true);
     toast.success("Invitation accepted!");
   };
 
-  const handleReject = (requestId: string) => {
-    respondToRequest(requestId, false);
+  const handleReject = async (requestId: string) => {
+    await respondToRequest(requestId, false);
     toast.info("Invitation declined");
   };
 

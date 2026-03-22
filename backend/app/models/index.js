@@ -1,11 +1,13 @@
-const dbConfig = require("../config/db.config.js");
+const User = require('./User');
+const Project = require('./Project');
+const Panel = require('./Panel');
+const Task = require('./Task');
+const ProjectRequest = require('./ProjectRequest');
 
-const mongoose = require("mongoose");
-mongoose.Promise = global.Promise;
-
-const db = {};
-db.mongoose = mongoose;
-db.url = dbConfig.url;
-db.tutorials = require("./tutorial.model.js")(mongoose);
-
-module.exports = db;
+module.exports = {
+  User,
+  Project,
+  Panel,
+  Task,
+  ProjectRequest
+};
