@@ -123,3 +123,134 @@
     @apply bg-background text-foreground;
   }
 }
+
+.landing-stage {
+  position: relative;
+}
+
+.landing-card {
+  opacity: 0;
+  transform: translateY(26px) scale(0.92);
+  filter: blur(10px);
+  animation: landing-card-assemble 0.85s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+.landing-card-1 {
+  animation-delay: 1.15s;
+}
+
+.landing-card-2 {
+  animation-delay: 1.32s;
+}
+
+.landing-card-3 {
+  animation-delay: 1.5s;
+}
+
+.landing-card-4 {
+  animation-delay: 1.66s;
+}
+
+.landing-card-5 {
+  animation-delay: 1.84s;
+}
+
+.landing-card-6 {
+  animation-delay: 2.02s;
+}
+
+.landing-loader-ring {
+  animation: landing-loader-pulse 1.25s ease-in-out infinite;
+}
+
+.landing-strike {
+  transform-origin: left center;
+  animation: landing-strike-sweep 0.65s cubic-bezier(0.18, 0.9, 0.26, 1) forwards;
+}
+
+.landing-flash {
+  opacity: 0;
+  animation: landing-flash-bloom 0.78s ease-out forwards;
+}
+
+.landing-particle {
+  animation: landing-particle-burst 0.9s ease-out forwards;
+}
+
+@keyframes landing-loader-pulse {
+  0%,
+  100% {
+    transform: scale(0.96);
+    box-shadow: 0 0 0 0 rgba(207, 182, 164, 0.16);
+  }
+  50% {
+    transform: scale(1.04);
+    box-shadow: 0 0 0 22px rgba(207, 182, 164, 0);
+  }
+}
+
+@keyframes landing-strike-sweep {
+  0% {
+    opacity: 0;
+    transform: translateX(-140px) scaleX(0.08);
+  }
+  24% {
+    opacity: 1;
+  }
+  70% {
+    opacity: 1;
+    transform: translateX(0) scaleX(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(36px) scaleX(1.18);
+  }
+}
+
+@keyframes landing-flash-bloom {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  35% {
+    opacity: 0.95;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.45);
+  }
+}
+
+@keyframes landing-particle-burst {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0) scale(0.25);
+  }
+  18% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--dx), var(--dy), 0) scale(1.65);
+  }
+}
+
+@keyframes landing-card-assemble {
+  0% {
+    opacity: 0;
+    transform: translateY(26px) scale(0.92);
+    filter: blur(10px);
+  }
+  55% {
+    opacity: 1;
+    transform: translateY(-4px) scale(1.015);
+    filter: blur(0);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}

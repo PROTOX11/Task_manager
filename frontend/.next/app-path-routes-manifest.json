@@ -1,0 +1,14 @@
+{
+  "/_not-found/page": "/_not-found",
+  "/page": "/",
+  "/signup/admin-payment/page": "/signup/admin-payment",
+  "/signup/page": "/signup",
+  "/(dashboard)/dashboard/page": "/dashboard",
+  "/(dashboard)/invitations/page": "/invitations",
+  "/(dashboard)/projects/new/page": "/projects/new",
+  "/(dashboard)/admin/projects/page": "/admin/projects",
+  "/(dashboard)/projects/[id]/page": "/projects/[id]",
+  "/(dashboard)/profile/page": "/profile",
+  "/(dashboard)/admin/users/page": "/admin/users",
+  "/(dashboard)/tasks/page": "/tasks"
+}
