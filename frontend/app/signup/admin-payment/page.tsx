@@ -6,11 +6,9 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { CreditCard, Loader2, ShieldCheck } from "lucide-react";
 
-import { useAuth } from "@/lib/auth-context";
+import { apiRequest } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Field, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 
 const ADMIN_SIGNUP_STORAGE_KEY = "pending-admin-signup";
 const ADMIN_PLAN_AMOUNT = 499;
@@ -22,15 +20,74 @@ interface PendingSignupData {
   lastName: string;
 }
 
+interface AdminOrderResponse {
+  keyId: string;
+  amount: number;
+  currency: string;
+  order: {
+    id: string;
+  };
+}
+
+interface VerifyAdminPaymentResponse {
+  token: string;
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    role: "admin";
+  };
+}
+
+declare global {
+  interface Window {
+    Razorpay?: new (options: {
+      key: string;
+      amount: number;
+      currency: string;
+      name: string;
+      description: string;
+      order_id: string;
+      handler: (response: {
+        razorpay_order_id: string;
+        razorpay_payment_id: string;
+        razorpay_signature: string;
+      }) => void;
+      modal?: {
+        ondismiss?: () => void;
+      };
+      prefill?: {
+        name?: string;
+        email?: string;
+      };
+      theme?: {
+        color?: string;
+      };
+    }) => {
+      open: () => void;
+    };
+  }
+}
+
+const loadRazorpayScript = () =>
+  new Promise<boolean>((resolve) => {
+    if (window.Razorpay) {
+      resolve(true);
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+
 export default function AdminPaymentPage() {
   const [pendingSignup, setPendingSignup] = useState<PendingSignupData | null>(null);
-  const [cardholderName, setCardholderName] = useState("");
-  const [cardNumber, setCardNumber] = useState("");
-  const [expiryDate, setExpiryDate] = useState("");
-  const [cvv, setCvv] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  const { signupAdmin } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -44,7 +101,6 @@ export default function AdminPaymentPage() {
     try {
       const parsedValue = JSON.parse(rawValue) as PendingSignupData;
       setPendingSignup(parsedValue);
-      setCardholderName(`${parsedValue.firstName} ${parsedValue.lastName}`.trim());
     } catch {
       sessionStorage.removeItem(ADMIN_SIGNUP_STORAGE_KEY);
       toast.error("Your admin signup session expired. Please fill the form again.");
@@ -52,43 +108,81 @@ export default function AdminPaymentPage() {
     }
   }, [router]);
 
-  const handlePayment = async (event: React.FormEvent) => {
-    event.preventDefault();
-
+  const handlePayment = async () => {
     if (!pendingSignup) {
       toast.error("Admin signup details are missing.");
-      return;
-    }
-
-    if (cardNumber.replace(/\s+/g, "").length < 16) {
-      toast.error("Enter a valid card number.");
-      return;
-    }
-
-    if (!expiryDate || !cvv || cvv.length < 3) {
-      toast.error("Enter complete payment details.");
       return;
     }
 
     setIsLoading(true);
 
     try {
-      const paymentReference = `ADMIN-${Date.now()}`;
+      const scriptLoaded = await loadRazorpayScript();
+      if (!scriptLoaded || !window.Razorpay) {
+        throw new Error("Razorpay checkout failed to load.");
+      }
 
-      await signupAdmin({
-        ...pendingSignup,
-        paymentAmount: ADMIN_PLAN_AMOUNT,
-        paymentReference,
+      const orderResponse = await apiRequest<AdminOrderResponse>("/auth/signup/admin/order", {
+        method: "POST",
+        body: JSON.stringify({
+          name: `${pendingSignup.firstName} ${pendingSignup.lastName}`.trim(),
+          email: pendingSignup.email,
+        }),
+        auth: false,
       });
 
-      sessionStorage.removeItem(ADMIN_SIGNUP_STORAGE_KEY);
-      toast.success("Payment complete. Your admin account is ready.");
-      router.push("/dashboard");
+      const razorpay = new window.Razorpay({
+        key: orderResponse.keyId,
+        amount: orderResponse.order ? orderResponse.amount * 100 : ADMIN_PLAN_AMOUNT * 100,
+        currency: orderResponse.currency,
+        name: "TaskFlow Admin",
+        description: "Admin access activation",
+        order_id: orderResponse.order.id,
+        prefill: {
+          name: `${pendingSignup.firstName} ${pendingSignup.lastName}`.trim(),
+          email: pendingSignup.email,
+        },
+        theme: {
+          color: "#2563eb",
+        },
+        modal: {
+          ondismiss: () => {
+            setIsLoading(false);
+          },
+        },
+        handler: async (response) => {
+          try {
+            await apiRequest<VerifyAdminPaymentResponse>("/auth/signup/admin/verify-payment", {
+              method: "POST",
+              body: JSON.stringify({
+                name: `${pendingSignup.firstName} ${pendingSignup.lastName}`.trim(),
+                email: pendingSignup.email,
+                password: pendingSignup.password,
+                razorpayOrderId: response.razorpay_order_id,
+                razorpayPaymentId: response.razorpay_payment_id,
+                razorpaySignature: response.razorpay_signature,
+              }),
+              auth: false,
+            });
+
+            sessionStorage.removeItem(ADMIN_SIGNUP_STORAGE_KEY);
+            toast.success("Payment complete. Your admin account is ready.");
+            router.push("/");
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : "Payment verified, but admin creation failed.";
+            toast.error(message);
+          } finally {
+            setIsLoading(false);
+          }
+        },
+      });
+
+      razorpay.open();
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : "Payment succeeded but account creation failed";
+        error instanceof Error ? error.message : "Unable to start Razorpay checkout";
       toast.error(message);
-    } finally {
       setIsLoading(false);
     }
   };
@@ -109,8 +203,7 @@ export default function AdminPaymentPage() {
             Finish the payment below to activate admin access for {pendingSignup.email}
           </CardDescription>
         </CardHeader>
-        <form onSubmit={handlePayment}>
-          <CardContent className="space-y-6">
+        <CardContent className="space-y-6">
             <div className="rounded-lg border bg-background p-4">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Admin plan</span>
@@ -124,56 +217,13 @@ export default function AdminPaymentPage() {
                 <CreditCard className="h-8 w-8 text-muted-foreground" />
               </div>
             </div>
-
-            <Field>
-              <FieldLabel htmlFor="cardholderName">Cardholder Name</FieldLabel>
-              <Input
-                id="cardholderName"
-                placeholder="Name on card"
-                value={cardholderName}
-                onChange={(event) => setCardholderName(event.target.value)}
-                required
-              />
-            </Field>
-
-            <Field>
-              <FieldLabel htmlFor="cardNumber">Card Number</FieldLabel>
-              <Input
-                id="cardNumber"
-                inputMode="numeric"
-                placeholder="1234 5678 9012 3456"
-                value={cardNumber}
-                onChange={(event) => setCardNumber(event.target.value)}
-                required
-              />
-            </Field>
-
-            <div className="grid grid-cols-2 gap-4">
-              <Field>
-                <FieldLabel htmlFor="expiryDate">Expiry Date</FieldLabel>
-                <Input
-                  id="expiryDate"
-                  placeholder="MM/YY"
-                  value={expiryDate}
-                  onChange={(event) => setExpiryDate(event.target.value)}
-                  required
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="cvv">CVV</FieldLabel>
-                <Input
-                  id="cvv"
-                  inputMode="numeric"
-                  placeholder="123"
-                  value={cvv}
-                  onChange={(event) => setCvv(event.target.value)}
-                  required
-                />
-              </Field>
+            <div className="rounded-lg border border-dashed border-primary/30 bg-primary/5 p-4 text-sm text-muted-foreground">
+              Razorpay test mode will open in a secure popup. Use your test key setup and any Razorpay
+              test payment method to complete admin activation for <span className="font-medium text-foreground">{pendingSignup.email}</span>.
             </div>
-          </CardContent>
+        </CardContent>
           <CardFooter className="flex flex-col gap-4">
-            <Button type="submit" className="w-full" disabled={isLoading}>
+            <Button type="button" className="w-full" disabled={isLoading} onClick={handlePayment}>
               {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Pay Rs. {ADMIN_PLAN_AMOUNT} and Create Admin Account
             </Button>
@@ -184,7 +234,6 @@ export default function AdminPaymentPage() {
               </Link>
             </p>
           </CardFooter>
-        </form>
       </Card>
     </div>
   );

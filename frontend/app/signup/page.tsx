@@ -10,7 +10,20 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { CheckSquare, Loader2 } from "lucide-react";
+import { CheckSquare, Loader2, ShieldCheck } from "lucide-react";
+
+const ADMIN_FEATURES = [
+  "Create and manage unlimited projects",
+  "Full control over team roles & permissions",
+  "AI-powered task creation and suggestions",
+  "Smart deadline and priority management",
+  "Real-time project tracking & dashboards",
+  "Custom workflows for different projects",
+  "Integration with tools (Git, Slack, etc.)",
+  "Bulk task updates and management",
+  "Secure data storage with backups",
+  "Faster team productivity & delivery",
+];
 
 const ADMIN_SIGNUP_STORAGE_KEY = "pending-admin-signup";
 
@@ -45,7 +58,7 @@ export default function SignupPage() {
           ADMIN_SIGNUP_STORAGE_KEY,
           JSON.stringify({ email, password, firstName, lastName })
         );
-        toast.success("Continue to payment to activate your admin account.");
+        toast.success("Continue to payment to unlock admin access.");
         router.push("/signup/admin-payment");
       }
     } catch (error) {
@@ -138,6 +151,22 @@ export default function SignupPage() {
                 minLength={6}
               />
             </Field>
+            {role === "admin" && (
+              <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
+                <div className="mb-3 flex items-center gap-2">
+                  <ShieldCheck className="h-5 w-5 text-primary" />
+                  <p className="font-semibold text-foreground">Admin Access Features</p>
+                </div>
+                <ul className="space-y-2 text-sm text-muted-foreground">
+                  {ADMIN_FEATURES.map((feature) => (
+                    <li key={feature} className="flex items-start gap-2">
+                      <span className="mt-1 h-1.5 w-1.5 rounded-full bg-primary" />
+                      <span>{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </CardContent>
           <CardFooter className="flex flex-col gap-4">
             <Button type="submit" className="w-full" disabled={isLoading}>

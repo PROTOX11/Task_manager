@@ -2,6 +2,83 @@ import User from '../models/User.js';
 import AdminAccount from '../models/AdminAccount.js';
 import { generateToken } from '../middleware/auth.middleware.js';
 import mongoose from 'mongoose';
+import crypto from 'crypto';
+import Razorpay from 'razorpay';
+
+const ADMIN_PLAN_AMOUNT = Number(process.env.ADMIN_PLAN_AMOUNT || 499);
+
+const getRazorpayClient = () => {
+  const keyId = process.env.RAZORPAY_KEY_ID;
+  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+
+  if (!keyId || !keySecret) {
+    throw new Error('Razorpay is not configured. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET.');
+  }
+
+  return new Razorpay({
+    key_id: keyId,
+    key_secret: keySecret,
+  });
+};
+
+const createAdminUserRecord = async ({
+  name,
+  email,
+  password,
+  paymentAmount,
+  paymentReference,
+}) => {
+  const existingUser = await User.findOne({ email });
+  if (existingUser) {
+    return { error: 'User with this email already exists', status: 400 };
+  }
+
+  const adminUser = new User({
+    name,
+    email,
+    password,
+    role: 'admin',
+  });
+
+  await adminUser.save();
+
+  try {
+    const adminAccount = new AdminAccount({
+      userId: adminUser._id,
+      name,
+      email,
+      paymentAmount,
+      paymentReference,
+      paymentStatus: 'paid',
+    });
+
+    await adminAccount.save();
+
+    const token = generateToken(adminUser._id);
+
+    return {
+      status: 201,
+      payload: {
+        message: 'Admin account created successfully',
+        token,
+        user: {
+          id: adminUser._id,
+          name: adminUser.name,
+          email: adminUser.email,
+          role: adminUser.role,
+        },
+        adminAccount: {
+          paymentAmount: adminAccount.paymentAmount,
+          paymentReference: adminAccount.paymentReference,
+          paidAt: adminAccount.paidAt,
+        },
+      },
+    };
+  } catch (adminAccountError) {
+    await User.findByIdAndDelete(adminUser._id);
+    throw adminAccountError;
+  }
+};
 
 const ensureDatabaseConnection = (res) => {
   if (mongoose.connection.readyState !== 1) {
@@ -71,57 +148,95 @@ export const signupAdmin = async (req, res) => {
       return res.status(400).json({ message: 'Admin signup requires a completed payment.' });
     }
 
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({ message: 'User with this email already exists' });
-    }
-
-    const adminUser = new User({
+    const result = await createAdminUserRecord({
       name,
       email,
       password,
-      role: 'admin',
+      paymentAmount,
+      paymentReference,
     });
 
-    await adminUser.save();
-
-    try {
-      const adminAccount = new AdminAccount({
-        userId: adminUser._id,
-        name,
-        email,
-        paymentAmount,
-        paymentReference,
-        paymentStatus,
-      });
-
-      await adminAccount.save();
-
-      const token = generateToken(adminUser._id);
-
-      res.status(201).json({
-        message: 'Admin account created successfully',
-        token,
-        user: {
-          id: adminUser._id,
-          name: adminUser.name,
-          email: adminUser.email,
-          role: adminUser.role,
-        },
-        adminAccount: {
-          paymentAmount: adminAccount.paymentAmount,
-          paymentReference: adminAccount.paymentReference,
-          paidAt: adminAccount.paidAt,
-        },
-      });
-    } catch (adminAccountError) {
-      await User.findByIdAndDelete(adminUser._id);
-      throw adminAccountError;
+    if (result.error) {
+      return res.status(result.status).json({ message: result.error });
     }
+
+    res.status(result.status).json(result.payload);
   } catch (error) {
     console.error('Admin signup error:', error);
 
     res.status(500).json({ message: 'Error registering admin', error: error.message });
+  }
+};
+
+export const createAdminOrder = async (req, res) => {
+  try {
+    const razorpay = getRazorpayClient();
+    const order = await razorpay.orders.create({
+      amount: ADMIN_PLAN_AMOUNT * 100,
+      currency: 'INR',
+      receipt: `admin_${Date.now()}`,
+      notes: {
+        plan: 'TaskFlow Admin',
+      },
+    });
+
+    res.status(201).json({
+      order,
+      keyId: process.env.RAZORPAY_KEY_ID,
+      amount: ADMIN_PLAN_AMOUNT,
+      currency: 'INR',
+    });
+  } catch (error) {
+    console.error('Create admin order error:', error);
+    res.status(500).json({ message: 'Unable to create Razorpay order', error: error.message });
+  }
+};
+
+export const verifyAdminPayment = async (req, res) => {
+  try {
+    if (!ensureDatabaseConnection(res)) {
+      return;
+    }
+
+    const {
+      name,
+      email,
+      password,
+      razorpayOrderId,
+      razorpayPaymentId,
+      razorpaySignature,
+    } = req.body;
+
+    const secret = process.env.RAZORPAY_KEY_SECRET;
+    if (!secret) {
+      return res.status(500).json({ message: 'Razorpay secret is not configured.' });
+    }
+
+    const expectedSignature = crypto
+      .createHmac('sha256', secret)
+      .update(`${razorpayOrderId}|${razorpayPaymentId}`)
+      .digest('hex');
+
+    if (expectedSignature !== razorpaySignature) {
+      return res.status(400).json({ message: 'Payment signature verification failed.' });
+    }
+
+    const result = await createAdminUserRecord({
+      name,
+      email,
+      password,
+      paymentAmount: ADMIN_PLAN_AMOUNT,
+      paymentReference: razorpayPaymentId,
+    });
+
+    if (result.error) {
+      return res.status(result.status).json({ message: result.error });
+    }
+
+    res.status(result.status).json(result.payload);
+  } catch (error) {
+    console.error('Verify admin payment error:', error);
+    res.status(500).json({ message: 'Unable to verify payment', error: error.message });
   }
 };
 

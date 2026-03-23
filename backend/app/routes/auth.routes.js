@@ -3,6 +3,8 @@ import { body, validationResult } from 'express-validator';
 import {
   signup,
   signupAdmin,
+  createAdminOrder,
+  verifyAdminPayment,
   login,
   getProfile,
   updateProfile,
@@ -29,6 +31,20 @@ const validateAdminSignup = [
   body('paymentReference').trim().notEmpty().withMessage('Payment reference is required'),
 ];
 
+const validateCreateAdminOrder = [
+  body('email').isEmail().withMessage('Valid email is required'),
+  body('name').trim().notEmpty().withMessage('Name is required'),
+];
+
+const validateVerifyAdminPayment = [
+  body('name').trim().notEmpty().withMessage('Name is required'),
+  body('email').isEmail().withMessage('Valid email is required'),
+  body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+  body('razorpayOrderId').trim().notEmpty().withMessage('Order ID is required'),
+  body('razorpayPaymentId').trim().notEmpty().withMessage('Payment ID is required'),
+  body('razorpaySignature').trim().notEmpty().withMessage('Payment signature is required'),
+];
+
 const validateLogin = [
   body('email').isEmail().withMessage('Valid email is required'),
   body('password').notEmpty().withMessage('Password is required')
@@ -45,6 +61,8 @@ const handleValidationErrors = (req, res, next) => {
 // Public routes
 router.post('/signup', validateSignup, handleValidationErrors, signup);
 router.post('/signup/admin', validateAdminSignup, handleValidationErrors, signupAdmin);
+router.post('/signup/admin/order', validateCreateAdminOrder, handleValidationErrors, createAdminOrder);
+router.post('/signup/admin/verify-payment', validateVerifyAdminPayment, handleValidationErrors, verifyAdminPayment);
 router.post('/login', validateLogin, handleValidationErrors, login);
 
 // Protected routes
