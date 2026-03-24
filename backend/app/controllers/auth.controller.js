@@ -34,6 +34,7 @@ const createAdminUserRecord = async ({
   password,
   paymentAmount,
   paymentReference,
+  avatar = '',
 }) => {
   const existingUser = await User.findOne({ email });
   if (existingUser) {
@@ -43,8 +44,9 @@ const createAdminUserRecord = async ({
   const adminUser = new User({
     name,
     email,
-    password,
+    password: password || crypto.randomBytes(24).toString('hex'),
     role: 'admin',
+    avatar,
   });
 
   await adminUser.save();
@@ -559,6 +561,7 @@ export const verifyAdminPayment = async (req, res) => {
       name,
       email,
       password,
+      googleCredential,
       razorpayOrderId,
       razorpayPaymentId,
       razorpaySignature,
@@ -578,12 +581,35 @@ export const verifyAdminPayment = async (req, res) => {
       return res.status(400).json({ message: 'Payment signature verification failed.' });
     }
 
+    let finalName = name;
+    let finalEmail = email;
+    let finalPassword = password;
+    let finalAvatar = '';
+
+    if (googleCredential) {
+      const payload = await verifyGoogleCredential(googleCredential);
+
+      if (!payload?.email || !payload.email_verified) {
+        return res.status(400).json({ message: 'Google account email is not verified.' });
+      }
+
+      if (payload.email.toLowerCase() !== email.toLowerCase()) {
+        return res.status(400).json({ message: 'Google account email does not match the payment email.' });
+      }
+
+      finalName = payload.name || name;
+      finalEmail = payload.email.toLowerCase();
+      finalPassword = '';
+      finalAvatar = payload.picture || '';
+    }
+
     const result = await createAdminUserRecord({
-      name,
-      email,
-      password,
+      name: finalName,
+      email: finalEmail.toLowerCase(),
+      password: finalPassword,
       paymentAmount: ADMIN_PLAN_AMOUNT,
       paymentReference: razorpayPaymentId,
+      avatar: finalAvatar,
     });
 
     if (result.error) {

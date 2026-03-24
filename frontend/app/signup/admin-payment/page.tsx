@@ -6,7 +6,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { CreditCard, Loader2, ShieldCheck } from "lucide-react";
 
-import { apiRequest } from "@/lib/api";
+import { apiRequest, setToken } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,7 @@ interface PendingSignupData {
   password: string;
   firstName: string;
   lastName: string;
+  googleCredential?: string;
 }
 
 interface AdminOrderResponse {
@@ -103,6 +104,7 @@ function AdminPaymentPageContent() {
         firstName: "",
         lastName: "",
         password: "",
+        googleCredential: "",
       };
       sessionStorage.setItem(ADMIN_SIGNUP_STORAGE_KEY, JSON.stringify(bootstrapData));
       setPendingSignup(bootstrapData);
@@ -136,7 +138,7 @@ function AdminPaymentPageContent() {
       return;
     }
 
-    if (pendingSignup.password.trim().length < 6) {
+    if (!pendingSignup.googleCredential && pendingSignup.password.trim().length < 6) {
       toast.error("Password must be at least 6 characters.");
       return;
     }
@@ -179,22 +181,24 @@ function AdminPaymentPageContent() {
         },
         handler: async (response) => {
           try {
-            await apiRequest<VerifyAdminPaymentResponse>("/auth/signup/admin/verify-payment", {
+            const verifiedSignup = await apiRequest<VerifyAdminPaymentResponse>("/auth/signup/admin/verify-payment", {
               method: "POST",
               body: JSON.stringify({
                 name: `${pendingSignup.firstName} ${pendingSignup.lastName}`.trim(),
                 email: pendingSignup.email,
-                password: pendingSignup.password,
                 razorpayOrderId: response.razorpay_order_id,
                 razorpayPaymentId: response.razorpay_payment_id,
                 razorpaySignature: response.razorpay_signature,
+                password: pendingSignup.googleCredential ? undefined : pendingSignup.password,
+                googleCredential: pendingSignup.googleCredential || undefined,
               }),
               auth: false,
             });
 
+            setToken(verifiedSignup.token);
             sessionStorage.removeItem(ADMIN_SIGNUP_STORAGE_KEY);
             toast.success("Payment complete. Your admin account is ready.");
-            router.push("/");
+            router.push("/dashboard");
           } catch (error) {
             const message =
               error instanceof Error ? error.message : "Payment verified, but admin creation failed.";
@@ -279,14 +283,20 @@ function AdminPaymentPageContent() {
                 id="adminPassword"
                 type="password"
                 value={pendingSignup.password}
+                disabled={Boolean(pendingSignup.googleCredential)}
                 onChange={(event) => {
                   const nextValue = { ...pendingSignup, password: event.target.value };
                   setPendingSignup(nextValue);
                   sessionStorage.setItem(ADMIN_SIGNUP_STORAGE_KEY, JSON.stringify(nextValue));
                 }}
-                placeholder="Create a password"
+                placeholder={pendingSignup.googleCredential ? "Generated from Google signup" : "Create a password"}
               />
             </Field>
+            {pendingSignup.googleCredential && (
+              <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-900">
+                Google signup detected. We will create your admin account using your Google identity after payment.
+              </div>
+            )}
             <div className="rounded-lg border bg-background p-4">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Admin plan</span>

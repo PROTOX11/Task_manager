@@ -68,10 +68,24 @@ const validateCreateAdminOrder = [
 const validateVerifyAdminPayment = [
   body('name').trim().notEmpty().withMessage('Name is required'),
   body('email').isEmail().withMessage('Valid email is required'),
-  body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+  body('password')
+    .optional({ nullable: true, checkFalsy: true })
+    .isLength({ min: 6 })
+    .withMessage('Password must be at least 6 characters'),
+  body('googleCredential')
+    .optional({ nullable: true, checkFalsy: true })
+    .trim()
+    .notEmpty()
+    .withMessage('Google credential must not be empty'),
   body('razorpayOrderId').trim().notEmpty().withMessage('Order ID is required'),
   body('razorpayPaymentId').trim().notEmpty().withMessage('Payment ID is required'),
   body('razorpaySignature').trim().notEmpty().withMessage('Payment signature is required'),
+  body().custom((value, { req }) => {
+    if (!req.body.password && !req.body.googleCredential) {
+      throw new Error('Password or Google credential is required');
+    }
+    return true;
+  }),
 ];
 
 const validateLogin = [
