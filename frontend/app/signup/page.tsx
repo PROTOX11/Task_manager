@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { GoogleAuthButton } from "@/components/google-auth-button";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,16 +28,69 @@ const ADMIN_FEATURES = [
 
 const ADMIN_SIGNUP_STORAGE_KEY = "pending-admin-signup";
 
-export default function SignupPage() {
+function SignupPageContent() {
   const [email, setEmail] = useState("");
+  const [otp, setOtp] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [role, setRole] = useState<"developer" | "admin">("developer");
   const [isLoading, setIsLoading] = useState(false);
-  const { signup } = useAuth();
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpEmail, setOtpEmail] = useState("");
+  const [verifiedSignupToken, setVerifiedSignupToken] = useState("");
+  const [verifiedEmail, setVerifiedEmail] = useState("");
+  const { requestSignupOtp, verifySignupOtp, completeVerifiedSignup, authenticateWithGoogle } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const prefetchedEmail = searchParams.get("email")?.trim() || "";
+    const prefetchedVerificationToken = searchParams.get("verificationToken")?.trim() || "";
+    const prefetchedRole = searchParams.get("role");
+
+    if (prefetchedEmail && (!email || !!prefetchedVerificationToken)) {
+      setEmail(prefetchedEmail);
+    }
+
+    if (
+      prefetchedVerificationToken &&
+      (prefetchedVerificationToken !== verifiedSignupToken || prefetchedEmail !== verifiedEmail)
+    ) {
+      setVerifiedSignupToken(prefetchedVerificationToken);
+      setVerifiedEmail(prefetchedEmail);
+      setOtpSent(false);
+      setOtp("");
+      setOtpEmail("");
+    }
+
+    if (prefetchedRole === "admin" || prefetchedRole === "developer") {
+      setRole(prefetchedRole);
+    }
+  }, [searchParams, verifiedEmail, verifiedSignupToken]);
+
+  useEffect(() => {
+    if (role !== "developer") {
+      setOtpSent(false);
+      setOtp("");
+      setOtpEmail("");
+      setVerifiedSignupToken("");
+      setVerifiedEmail("");
+      return;
+    }
+
+    if (verifiedSignupToken && verifiedEmail && email !== verifiedEmail) {
+      setVerifiedSignupToken("");
+      setVerifiedEmail("");
+    }
+
+    if (otpSent && otpEmail && email !== otpEmail) {
+      setOtpSent(false);
+      setOtp("");
+      setOtpEmail("");
+    }
+  }, [email, otpEmail, otpSent, role]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,9 +104,31 @@ export default function SignupPage() {
 
     try {
       if (role === "developer") {
-        await signup({ email, password, firstName, lastName });
-        toast.success("Developer account created successfully!");
-        router.push("/dashboard");
+        if (verifiedSignupToken) {
+          await completeVerifiedSignup({
+            email,
+            password,
+            firstName,
+            lastName,
+            verificationToken: verifiedSignupToken,
+          });
+          toast.success("Developer account created successfully!");
+          router.push("/dashboard");
+        } else if (!otpSent) {
+          await requestSignupOtp(email);
+          setOtpSent(true);
+          setOtpEmail(email);
+          toast.success("OTP sent to your email.");
+        } else {
+          if (otp.trim().length !== 6) {
+            toast.error("Enter the 6-digit OTP sent to your email.");
+            return;
+          }
+
+          await verifySignupOtp({ email, password, firstName, lastName, otp: otp.trim() });
+          toast.success("Developer account created successfully!");
+          router.push("/dashboard");
+        }
       } else {
         sessionStorage.setItem(
           ADMIN_SIGNUP_STORAGE_KEY,
@@ -69,6 +145,21 @@ export default function SignupPage() {
       setIsLoading(false);
     }
   };
+
+  const handleGoogleAuth = useCallback(
+    async (credential: string) => {
+      try {
+        await authenticateWithGoogle(credential);
+        toast.success("Signed in with Google.");
+        router.push("/dashboard");
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Google sign-in failed";
+        toast.error(message);
+      }
+    },
+    [authenticateWithGoogle, router]
+  );
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
@@ -151,6 +242,25 @@ export default function SignupPage() {
                 minLength={6}
               />
             </Field>
+            {role === "developer" && otpSent && (
+              <Field>
+                <FieldLabel htmlFor="otp">Email OTP</FieldLabel>
+                <Input
+                  id="otp"
+                  inputMode="numeric"
+                  placeholder="Enter 6-digit OTP"
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  required
+                />
+              </Field>
+            )}
+            {role === "developer" && verifiedSignupToken && (
+              <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-900">
+                Email <span className="font-semibold">{email}</span> is already verified. Finish your
+                account details below and create your account.
+              </div>
+            )}
             {role === "admin" && (
               <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
                 <div className="mb-3 flex items-center gap-2">
@@ -171,17 +281,61 @@ export default function SignupPage() {
           <CardFooter className="flex flex-col gap-4">
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {role === "admin" ? "Continue to Payment" : "Create Account"}
+              {role === "admin"
+                ? "Continue to Payment"
+                : verifiedSignupToken
+                  ? "Create Account"
+                  : otpSent
+                  ? "Verify OTP & Create Account"
+                  : "Send OTP"}
             </Button>
+            {role === "developer" && otpSent && !verifiedSignupToken && (
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                disabled={isLoading}
+                onClick={async () => {
+                  try {
+                    setIsLoading(true);
+                    await requestSignupOtp(email);
+                    setOtpEmail(email);
+                    toast.success("A new OTP has been sent.");
+                  } catch (error) {
+                    const message =
+                      error instanceof Error ? error.message : "Failed to resend OTP";
+                    toast.error(message);
+                  } finally {
+                    setIsLoading(false);
+                  }
+                }}
+              >
+                Resend OTP
+              </Button>
+            )}
             <p className="text-sm text-muted-foreground">
               Already have an account?{" "}
               <Link href="/" className="text-primary hover:underline">
                 Sign in
               </Link>
             </p>
+            <div className="flex w-full items-center gap-3 text-sm text-muted-foreground">
+              <div className="h-px flex-1 bg-border" />
+              <span>or continue with</span>
+              <div className="h-px flex-1 bg-border" />
+            </div>
+            <GoogleAuthButton onCredential={handleGoogleAuth} text="continue_with" />
           </CardFooter>
         </form>
       </Card>
     </div>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-muted/30" />}>
+      <SignupPageContent />
+    </Suspense>
   );
 }

@@ -1,14 +1,14 @@
 {
   "/_not-found/page": "app/_not-found/page.js",
-  "/page": "app/page.js",
   "/signup/admin-payment/page": "app/signup/admin-payment/page.js",
   "/signup/page": "app/signup/page.js",
-  "/(dashboard)/dashboard/page": "app/(dashboard)/dashboard/page.js",
-  "/(dashboard)/invitations/page": "app/(dashboard)/invitations/page.js",
-  "/(dashboard)/projects/new/page": "app/(dashboard)/projects/new/page.js",
+  "/page": "app/page.js",
   "/(dashboard)/admin/projects/page": "app/(dashboard)/admin/projects/page.js",
-  "/(dashboard)/projects/[id]/page": "app/(dashboard)/projects/[id]/page.js",
-  "/(dashboard)/profile/page": "app/(dashboard)/profile/page.js",
+  "/(dashboard)/dashboard/page": "app/(dashboard)/dashboard/page.js",
   "/(dashboard)/admin/users/page": "app/(dashboard)/admin/users/page.js",
-  "/(dashboard)/tasks/page": "app/(dashboard)/tasks/page.js"
+  "/(dashboard)/projects/[id]/page": "app/(dashboard)/projects/[id]/page.js",
+  "/(dashboard)/tasks/page": "app/(dashboard)/tasks/page.js",
+  "/(dashboard)/projects/new/page": "app/(dashboard)/projects/new/page.js",
+  "/(dashboard)/invitations/page": "app/(dashboard)/invitations/page.js",
+  "/(dashboard)/profile/page": "app/(dashboard)/profile/page.js"
 }

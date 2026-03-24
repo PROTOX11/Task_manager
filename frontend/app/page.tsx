@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { GoogleAuthButton } from "@/components/google-auth-button";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
-import { CSSProperties, FormEvent, useEffect, useState } from "react";
-import { ArrowRight, ChevronRight, Loader2, Sparkles, Star } from "lucide-react";
+import { CSSProperties, FormEvent, useCallback, useEffect, useState } from "react";
+import { ArrowRight, CheckCircle2, ChevronRight, Loader2, Sparkles, Star } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,13 +38,15 @@ const introParticles = [
 ];
 
 export default function HomePage() {
-  const { user, isLoading, login } = useAuth();
+  const { user, isLoading, authenticateWithGoogle, requestSignupOtp, verifySignupEmailOtp } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [authMode, setAuthMode] = useState<"signup" | "signin">("signup");
+  const [signupOtp, setSignupOtp] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [introStage, setIntroStage] = useState<"loading" | "strike" | "ready">("loading");
+  const [signupStep, setSignupStep] = useState<"email" | "otp" | "verified">("email");
+  const [verifiedSignupToken, setVerifiedSignupToken] = useState("");
+  const roleSelectionOpen = signupStep === "verified" && Boolean(verifiedSignupToken);
 
   useEffect(() => {
     if (!isLoading && user) {
@@ -63,27 +66,60 @@ export default function HomePage() {
     };
   }, [isLoading, user]);
 
-  const handleSignupSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const query = email.trim() ? `?email=${encodeURIComponent(email.trim())}` : "";
-    router.push(`/signup${query}`);
-  };
+  useEffect(() => {
+    if (signupStep !== "email" && !email.trim()) {
+      setSignupStep("email");
+      setSignupOtp("");
+      setVerifiedSignupToken("");
+    }
+  }, [email, signupStep]);
 
-  const handleSigninSubmit = async (event: FormEvent<HTMLFormElement>) => {
+  const handleSignupSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsSubmitting(true);
 
     try {
-      await login(email, password);
-      toast.success("Welcome back!");
-      router.push("/dashboard");
+      if (signupStep === "email") {
+        await requestSignupOtp(email.trim());
+        setSignupStep("otp");
+        setSignupOtp("");
+        toast.success("OTP sent to your email.");
+        return;
+      }
+
+      if (signupStep === "otp") {
+        if (signupOtp.trim().length !== 6) {
+          toast.error("Enter the 6-digit OTP sent to your email.");
+          return;
+        }
+
+        const verificationToken = await verifySignupEmailOtp(email.trim(), signupOtp.trim());
+        setVerifiedSignupToken(verificationToken);
+        setSignupStep("verified");
+        toast.success("Email verified. Continue to complete your signup.");
+      }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Invalid email or password";
+      const message = error instanceof Error ? error.message : "Unable to continue signup";
       toast.error(message);
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  const handleGoogleAuth = useCallback(
+    async (credential: string) => {
+      try {
+        await authenticateWithGoogle(credential);
+        toast.success("Signed in with Google.");
+        router.push("/dashboard");
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Google sign-in failed";
+        toast.error(message);
+      }
+    },
+    [authenticateWithGoogle, router]
+  );
 
   if (isLoading) {
     return (
@@ -155,7 +191,7 @@ export default function HomePage() {
             introStage === "ready"
               ? "opacity-100 blur-0"
               : "opacity-20 blur-[2px] saturate-75"
-          }`}
+          } ${roleSelectionOpen ? "pointer-events-none blur-sm" : ""}`}
         >
         <header className="landing-card landing-card-1 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <nav className="mx-auto w-full max-w-[920px] rounded-full bg-[#d9d7d5] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] lg:mx-0">
@@ -192,30 +228,13 @@ export default function HomePage() {
 
           <div className="landing-card landing-card-5 mx-auto w-full max-w-[340px] self-start xl:mx-0 xl:pt-4">
             <div className="relative mb-4 flex justify-center">
-              <div className="inline-flex rounded-full bg-[#ece7e7] p-1">
-                <button
-                  type="button"
-                  onClick={() => setAuthMode("signup")}
-                  className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-                    authMode === "signup" ? "bg-[#d7d2d2] text-black" : "text-[#666]"
-                  }`}
-                >
-                  Signup
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAuthMode("signin")}
-                  className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-                    authMode === "signin" ? "bg-[#d7d2d2] text-black" : "text-[#666]"
-                  }`}
-                >
-                  Sign in
-                </button>
-              </div>
+              <p className="rounded-full bg-[#ece7e7] px-6 py-2 text-sm font-semibold uppercase tracking-[0.16em] text-[#5f5a5a]">
+                Continue here
+              </p>
             </div>
 
-            {authMode === "signup" ? (
-              <form onSubmit={handleSignupSubmit} className="space-y-5">
+            <form onSubmit={handleSignupSubmit} className="space-y-5">
+              {signupStep === "email" && (
                 <Input
                   type="email"
                   value={email}
@@ -224,58 +243,102 @@ export default function HomePage() {
                   className="h-14 rounded-full border-0 bg-[#ebe7e7] px-8 text-center text-lg shadow-none placeholder:text-black/70 focus-visible:ring-[#3a7ce7]/30"
                   required
                 />
-                <div className="flex justify-center">
-                  <Button
-                    type="submit"
-                    className="h-auto rounded-full bg-[#1b7fe8] px-9 py-2.5 text-base font-medium text-white shadow-none hover:bg-[#166fd0]"
-                  >
-                    Signup
-                  </Button>
+              )}
+
+              {signupStep === "otp" && (
+                <div className="space-y-3">
+                  <p className="text-center text-sm text-[#555]">
+                    Enter the OTP sent to <span className="font-medium text-[#222]">{email}</span>
+                  </p>
+                  <Input
+                    type="text"
+                    inputMode="numeric"
+                    value={signupOtp}
+                    onChange={(event) =>
+                      setSignupOtp(event.target.value.replace(/\D/g, "").slice(0, 6))
+                    }
+                    placeholder="Enter OTP"
+                    className="h-14 rounded-full border-0 bg-[#ebe7e7] px-8 text-center text-lg shadow-none placeholder:text-black/70 focus-visible:ring-[#3a7ce7]/30"
+                    required
+                  />
                 </div>
-                <div className="flex items-center gap-3 text-sm text-[#2f2f2f]">
-                  <div className="h-px flex-1 bg-black" />
-                  <span>or continue with</span>
-                  <div className="h-px flex-1 bg-black" />
+              )}
+
+              {signupStep === "verified" && (
+                <div className="rounded-[1.75rem] bg-[#ebe7e7] px-6 py-5 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.72)]">
+                  <div className="mb-2 flex items-center justify-center gap-2 text-[#2c7a4b]">
+                    <CheckCircle2 className="h-5 w-5" />
+                    <span className="font-semibold">Email verified</span>
+                  </div>
+                  <p className="text-sm text-[#555]">
+                    {email} is ready. Choose Developer or Admin from the popup.
+                  </p>
                 </div>
-                <div className="flex justify-center">
-                  <Button
-                    asChild
-                    variant="ghost"
-                    className="h-auto rounded-full border border-[#e4dfdf] bg-[#eceaea] px-12 py-2.5 text-base font-medium text-[#3b3b3b] shadow-none hover:bg-[#e2dfdf]"
-                  >
-                    <Link href="/signup">Google</Link>
-                  </Button>
-                </div>
-              </form>
-            ) : (
-              <form onSubmit={handleSigninSubmit} className="space-y-4">
-                <Input
-                  type="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  placeholder="Enter your email"
-                  className="h-14 rounded-full border-0 bg-[#ebe7e7] px-8 text-center text-lg shadow-none placeholder:text-black/70 focus-visible:ring-[#3a7ce7]/30"
-                  required
-                />
-                <Input
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  placeholder="Enter your password"
-                  className="h-14 rounded-full border-0 bg-[#ebe7e7] px-8 text-center text-lg shadow-none placeholder:text-black/70 focus-visible:ring-[#3a7ce7]/30"
-                  required
-                />
+              )}
+
+              {signupStep !== "verified" ? (
                 <div className="flex justify-center">
                   <Button
                     type="submit"
                     disabled={isSubmitting}
-                    className="h-auto rounded-full bg-[#1f1f1f] px-10 py-2.5 text-base font-medium text-white shadow-none hover:bg-black"
+                    className="h-auto rounded-full bg-[#1b7fe8] px-9 py-2.5 text-base font-medium text-white shadow-none hover:bg-[#166fd0]"
                   >
-                    {isSubmitting ? "Signing in..." : "Sign in"}
+                    {isSubmitting
+                      ? signupStep === "email"
+                        ? "Sending OTP..."
+                        : "Verifying..."
+                      : signupStep === "email"
+                        ? "Continue"
+                        : "Verify OTP"}
                   </Button>
                 </div>
-              </form>
-            )}
+              ) : (
+                <div className="flex flex-col items-center gap-3">
+                  <button
+                    type="button"
+                    className="text-sm text-[#666] underline-offset-4 hover:underline"
+                    onClick={() => {
+                      setSignupStep("email");
+                      setSignupOtp("");
+                      setVerifiedSignupToken("");
+                    }}
+                  >
+                    Use a different email
+                  </button>
+                </div>
+              )}
+
+              {signupStep === "otp" && (
+                <div className="flex justify-center">
+                  <button
+                    type="button"
+                    disabled={isSubmitting}
+                    className="text-sm text-[#666] underline-offset-4 hover:underline disabled:opacity-60"
+                    onClick={async () => {
+                      try {
+                        setIsSubmitting(true);
+                        await requestSignupOtp(email.trim());
+                        toast.success("A new OTP has been sent.");
+                      } catch (error) {
+                        const message =
+                          error instanceof Error ? error.message : "Failed to resend OTP";
+                        toast.error(message);
+                      } finally {
+                        setIsSubmitting(false);
+                      }
+                    }}
+                  >
+                    Resend OTP
+                  </button>
+                </div>
+              )}
+              <div className="flex items-center gap-3 text-sm text-[#2f2f2f]">
+                <div className="h-px flex-1 bg-black" />
+                <span>or continue with</span>
+                <div className="h-px flex-1 bg-black" />
+              </div>
+              <GoogleAuthButton onCredential={handleGoogleAuth} text="signup_with" />
+            </form>
           </div>
 
           <div
@@ -328,6 +391,99 @@ export default function HomePage() {
           </div>
         </section>
         </div>
+
+        {roleSelectionOpen && (
+          <div className="fixed inset-0 z-40 flex items-center justify-center bg-[rgba(38,34,33,0.22)] px-4 backdrop-blur-md">
+            <div className="w-full max-w-5xl rounded-[2.75rem] border border-white/50 bg-[#f5f0ed]/95 p-6 shadow-[0_30px_90px_rgba(63,54,50,0.2)] sm:p-8">
+              <div className="mb-6 text-center">
+                <p className="text-sm font-semibold uppercase tracking-[0.28em] text-[#9b8f88]">
+                  Email verified
+                </p>
+                <h2 className="mt-2 text-[clamp(1.8rem,2.8vw,2.8rem)] font-bold text-[#4a4545]">
+                  Choose your Tickzen access
+                </h2>
+                <p className="mt-2 text-base text-[#6a6464]">
+                  Continue as a developer workspace or unlock the admin plan with payment.
+                </p>
+              </div>
+
+              <div className="grid gap-5 lg:grid-cols-2">
+                <div className="rounded-[2.25rem] bg-[#d8d3d3] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
+                  <div className="mb-4 inline-flex rounded-full bg-[#ece8e8] px-5 py-2 text-sm font-semibold uppercase tracking-[0.18em] text-[#5d5858]">
+                    Developer
+                  </div>
+                  <h3 className="text-3xl font-bold text-[#3f3b3b]">Build with your team</h3>
+                  <p className="mt-3 text-base leading-relaxed text-[#585353]">
+                    Create projects, manage tasks, and finish your developer account setup with your
+                    verified email already attached.
+                  </p>
+                  <ul className="mt-5 space-y-2 text-sm text-[#494444]">
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#2c7a4b]" />
+                      <span>Verified email is carried into signup</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#2c7a4b]" />
+                      <span>No second OTP prompt on the next step</span>
+                    </li>
+                  </ul>
+                  <Button
+                    type="button"
+                    onClick={() =>
+                      router.push(
+                        `/signup?email=${encodeURIComponent(email.trim())}&verificationToken=${encodeURIComponent(verifiedSignupToken)}`
+                      )
+                    }
+                    className="mt-6 h-auto rounded-full bg-[#1b7fe8] px-8 py-3 text-base font-medium text-white shadow-none hover:bg-[#166fd0]"
+                  >
+                    Continue as Developer
+                  </Button>
+                </div>
+
+                <div className="rounded-[2.25rem] bg-[#b9b2b2] p-6 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.28)]">
+                  <div className="mb-4 inline-flex rounded-full bg-white/20 px-5 py-2 text-sm font-semibold uppercase tracking-[0.18em] text-white">
+                    Admin plan
+                  </div>
+                  <h3 className="text-3xl font-bold">Admin access with payment</h3>
+                  <p className="mt-3 text-base leading-relaxed text-white/90">
+                    Unlock project governance, payment-backed admin onboarding, and premium controls
+                    for your organization.
+                  </p>
+                  <div className="mt-5 rounded-[1.75rem] bg-white/18 p-4">
+                    <p className="text-sm uppercase tracking-[0.18em] text-white/75">Plan amount</p>
+                    <p className="mt-2 text-4xl font-black">₹499</p>
+                    <p className="mt-3 text-sm leading-relaxed text-white/85">
+                      Payment is completed in the admin setup flow before account activation.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={() =>
+                      router.push(`/signup/admin-payment?email=${encodeURIComponent(email.trim())}`)
+                    }
+                    className="mt-6 h-auto rounded-full bg-white px-8 py-3 text-base font-medium text-[#4d4747] shadow-none hover:bg-[#f1eded]"
+                  >
+                    Continue as Admin
+                  </Button>
+                </div>
+              </div>
+
+              <div className="mt-6 flex justify-center">
+                <button
+                  type="button"
+                  className="text-sm text-[#6b6666] underline-offset-4 hover:underline"
+                  onClick={() => {
+                    setSignupStep("email");
+                    setSignupOtp("");
+                    setVerifiedSignupToken("");
+                  }}
+                >
+                  Use a different email
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </main>
   );

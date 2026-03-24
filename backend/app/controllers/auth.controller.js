@@ -4,8 +4,15 @@ import { generateToken } from '../middleware/auth.middleware.js';
 import mongoose from 'mongoose';
 import crypto from 'crypto';
 import Razorpay from 'razorpay';
+import SibApiV3Sdk from 'sib-api-v3-sdk';
+import { OAuth2Client } from 'google-auth-library';
 
 const ADMIN_PLAN_AMOUNT = Number(process.env.ADMIN_PLAN_AMOUNT || 499);
+const OTP_EXPIRY_MS = 5 * 60 * 1000;
+const VERIFIED_SIGNUP_EXPIRY_MS = 15 * 60 * 1000;
+const otpStore = new Map();
+const verifiedSignupStore = new Map();
+let googleClient;
 
 const getRazorpayClient = () => {
   const keyId = process.env.RAZORPAY_KEY_ID;
@@ -91,6 +98,133 @@ const ensureDatabaseConnection = (res) => {
   return true;
 };
 
+const getBrevoEmailApi = () => {
+  const apiKeyValue = process.env.BREVO_API_KEY;
+  if (!apiKeyValue) {
+    throw new Error('Brevo is not configured. Set BREVO_API_KEY.');
+  }
+
+  const client = SibApiV3Sdk.ApiClient.instance;
+  client.authentications['api-key'].apiKey = apiKeyValue;
+
+  return new SibApiV3Sdk.TransactionalEmailsApi();
+};
+
+const getGoogleClient = () => {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  if (!clientId) {
+    throw new Error('Google OAuth is not configured. Set GOOGLE_CLIENT_ID.');
+  }
+
+  if (!googleClient) {
+    googleClient = new OAuth2Client(clientId);
+  }
+
+  return googleClient;
+};
+
+const verifyGoogleCredential = async (credential) => {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const client = getGoogleClient();
+  const ticket = await client.verifyIdToken({
+    idToken: credential,
+    audience: clientId,
+  });
+
+  return ticket.getPayload();
+};
+
+const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
+
+const saveOTP = (email, otp) => {
+  otpStore.set(email.toLowerCase(), {
+    otp,
+    expires: Date.now() + OTP_EXPIRY_MS,
+  });
+};
+
+const getStoredOTP = (email) => otpStore.get(email.toLowerCase());
+
+const clearOTP = (email) => {
+  otpStore.delete(email.toLowerCase());
+};
+
+const saveVerifiedSignup = (email) => {
+  const token = crypto.randomBytes(32).toString('hex');
+
+  verifiedSignupStore.set(token, {
+    email: email.toLowerCase(),
+    expires: Date.now() + VERIFIED_SIGNUP_EXPIRY_MS,
+  });
+
+  return token;
+};
+
+const verifySignupToken = (token, email) => {
+  const record = verifiedSignupStore.get(token);
+  if (!record) {
+    return { valid: false, reason: 'Signup verification has expired. Please verify your email again.' };
+  }
+
+  if (Date.now() > record.expires) {
+    verifiedSignupStore.delete(token);
+    return { valid: false, reason: 'Signup verification has expired. Please verify your email again.' };
+  }
+
+  if (record.email !== email.toLowerCase()) {
+    return { valid: false, reason: 'Verification token does not match this email address.' };
+  }
+
+  return { valid: true };
+};
+
+const clearVerifiedSignup = (token) => {
+  verifiedSignupStore.delete(token);
+};
+
+const verifyStoredOTP = (email, userOtp) => {
+  const record = getStoredOTP(email);
+  if (!record) {
+    return { valid: false, reason: 'OTP not found. Please request a new OTP.' };
+  }
+
+  if (Date.now() > record.expires) {
+    clearOTP(email);
+    return { valid: false, reason: 'OTP has expired. Please request a new OTP.' };
+  }
+
+  if (record.otp !== userOtp) {
+    return { valid: false, reason: 'Invalid OTP.' };
+  }
+
+  return { valid: true };
+};
+
+const sendOTPEmail = async (email, otp) => {
+  const senderEmail = process.env.BREVO_SENDER_EMAIL;
+  const senderName = process.env.BREVO_SENDER_NAME || 'Tickzen';
+
+  if (!senderEmail) {
+    throw new Error('Brevo sender is not configured. Set BREVO_SENDER_EMAIL.');
+  }
+
+  const tranEmailApi = getBrevoEmailApi();
+
+  await tranEmailApi.sendTransacEmail({
+    sender: { email: senderEmail, name: senderName },
+    to: [{ email }],
+    subject: 'Your Tickzen OTP Code',
+    htmlContent: `
+      <div style="font-family: Arial, sans-serif; color: #222;">
+        <h2 style="margin-bottom: 12px;">Verify your email</h2>
+        <p style="margin-bottom: 16px;">Use the OTP below to complete your Tickzen signup.</p>
+        <div style="font-size: 32px; font-weight: 700; letter-spacing: 8px; margin: 20px 0;">${otp}</div>
+        <p style="margin-top: 16px;">This code expires in 5 minutes.</p>
+      </div>
+    `,
+  });
+};
+
 // Register new user
 export const signup = async (req, res) => {
   try {
@@ -132,6 +266,229 @@ export const signup = async (req, res) => {
   } catch (error) {
     console.error('Signup error:', error);
     res.status(500).json({ message: 'Error registering user', error: error.message });
+  }
+};
+
+export const sendSignupOtp = async (req, res) => {
+  try {
+    if (!ensureDatabaseConnection(res)) {
+      return;
+    }
+
+    const { email } = req.body;
+    const normalizedEmail = email.toLowerCase();
+
+    const existingUser = await User.findOne({ email: normalizedEmail });
+    if (existingUser) {
+      return res.status(400).json({ message: 'User with this email already exists' });
+    }
+
+    const otp = generateOTP();
+    await sendOTPEmail(normalizedEmail, otp);
+    saveOTP(normalizedEmail, otp);
+
+    res.json({ message: 'OTP sent successfully' });
+  } catch (error) {
+    console.error('Send signup OTP error:', error);
+    res.status(500).json({ message: 'Unable to send OTP', error: error.message });
+  }
+};
+
+export const getGoogleAuthConfig = async (req, res) => {
+  try {
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+
+    if (!clientId) {
+      return res.status(500).json({ message: 'Google OAuth is not configured.' });
+    }
+
+    res.json({ clientId });
+  } catch (error) {
+    console.error('Get Google auth config error:', error);
+    res.status(500).json({ message: 'Unable to load Google auth config', error: error.message });
+  }
+};
+
+export const googleAuth = async (req, res) => {
+  try {
+    if (!ensureDatabaseConnection(res)) {
+      return;
+    }
+
+    const { credential } = req.body;
+    const payload = await verifyGoogleCredential(credential);
+
+    if (!payload?.email || !payload.email_verified) {
+      return res.status(400).json({ message: 'Google account email is not verified.' });
+    }
+
+    const normalizedEmail = payload.email.toLowerCase();
+    let user = await User.findOne({ email: normalizedEmail });
+
+    if (user?.role === 'admin') {
+      return res.status(403).json({
+        message: 'Admin accounts must continue through the admin signup and payment flow.',
+      });
+    }
+
+    if (!user) {
+      const generatedPassword = crypto.randomBytes(24).toString('hex');
+      user = new User({
+        name: payload.name || normalizedEmail.split('@')[0],
+        email: normalizedEmail,
+        password: generatedPassword,
+        role: 'developer',
+        avatar: payload.picture || '',
+      });
+
+      await user.save();
+    } else if (payload.picture && user.avatar !== payload.picture) {
+      user.avatar = payload.picture;
+      await user.save();
+    }
+
+    const token = generateToken(user._id);
+
+    res.json({
+      message: 'Google authentication successful',
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        avatar: user.avatar,
+      },
+    });
+  } catch (error) {
+    console.error('Google auth error:', error);
+    res.status(500).json({ message: 'Unable to authenticate with Google', error: error.message });
+  }
+};
+
+export const verifySignupOtp = async (req, res) => {
+  try {
+    if (!ensureDatabaseConnection(res)) {
+      return;
+    }
+
+    const { name, email, password, otp } = req.body;
+    const normalizedEmail = email.toLowerCase();
+
+    const existingUser = await User.findOne({ email: normalizedEmail });
+    if (existingUser) {
+      return res.status(400).json({ message: 'User with this email already exists' });
+    }
+
+    const otpResult = verifyStoredOTP(normalizedEmail, otp);
+    if (!otpResult.valid) {
+      return res.status(400).json({ message: otpResult.reason });
+    }
+
+    const user = new User({
+      name,
+      email: normalizedEmail,
+      password,
+      role: 'developer',
+    });
+
+    await user.save();
+    clearOTP(normalizedEmail);
+
+    const token = generateToken(user._id);
+
+    res.status(201).json({
+      message: 'User registered successfully',
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+    });
+  } catch (error) {
+    console.error('Verify signup OTP error:', error);
+    res.status(500).json({ message: 'Unable to verify OTP', error: error.message });
+  }
+};
+
+export const verifySignupEmailOtp = async (req, res) => {
+  try {
+    if (!ensureDatabaseConnection(res)) {
+      return;
+    }
+
+    const { email, otp } = req.body;
+    const normalizedEmail = email.toLowerCase();
+
+    const existingUser = await User.findOne({ email: normalizedEmail });
+    if (existingUser) {
+      return res.status(400).json({ message: 'User with this email already exists' });
+    }
+
+    const otpResult = verifyStoredOTP(normalizedEmail, otp);
+    if (!otpResult.valid) {
+      return res.status(400).json({ message: otpResult.reason });
+    }
+
+    clearOTP(normalizedEmail);
+    const verificationToken = saveVerifiedSignup(normalizedEmail);
+
+    res.json({
+      message: 'Email verified successfully',
+      verificationToken,
+    });
+  } catch (error) {
+    console.error('Verify signup email OTP error:', error);
+    res.status(500).json({ message: 'Unable to verify OTP', error: error.message });
+  }
+};
+
+export const completeVerifiedSignup = async (req, res) => {
+  try {
+    if (!ensureDatabaseConnection(res)) {
+      return;
+    }
+
+    const { name, email, password, verificationToken } = req.body;
+    const normalizedEmail = email.toLowerCase();
+
+    const existingUser = await User.findOne({ email: normalizedEmail });
+    if (existingUser) {
+      return res.status(400).json({ message: 'User with this email already exists' });
+    }
+
+    const verificationResult = verifySignupToken(verificationToken, normalizedEmail);
+    if (!verificationResult.valid) {
+      return res.status(400).json({ message: verificationResult.reason });
+    }
+
+    const user = new User({
+      name,
+      email: normalizedEmail,
+      password,
+      role: 'developer',
+    });
+
+    await user.save();
+    clearVerifiedSignup(verificationToken);
+
+    const token = generateToken(user._id);
+
+    res.status(201).json({
+      message: 'User registered successfully',
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+    });
+  } catch (error) {
+    console.error('Complete verified signup error:', error);
+    res.status(500).json({ message: 'Unable to create account', error: error.message });
   }
 };
 

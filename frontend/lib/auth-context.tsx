@@ -8,7 +8,12 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  authenticateWithGoogle: (credential: string) => Promise<void>;
   signup: (data: SignupData) => Promise<void>;
+  requestSignupOtp: (email: string) => Promise<void>;
+  verifySignupEmailOtp: (email: string, otp: string) => Promise<string>;
+  verifySignupOtp: (data: SignupData & { otp: string }) => Promise<void>;
+  completeVerifiedSignup: (data: SignupData & { verificationToken: string }) => Promise<void>;
   signupAdmin: (data: AdminSignupData) => Promise<void>;
   logout: () => void;
   updateProfile: (data: Partial<User>) => Promise<void>;
@@ -94,6 +99,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(mapApiUser(response.user));
   };
 
+  const authenticateWithGoogle = async (credential: string) => {
+    const response = await apiRequest<{ token: string; user: ApiUser }>(
+      "/auth/google",
+      {
+        method: "POST",
+        body: JSON.stringify({ credential }),
+        auth: false,
+      }
+    );
+    setToken(response.token);
+    setUser(mapApiUser(response.user));
+  };
+
   const signup = async (data: SignupData) => {
     const response = await apiRequest<{ token: string; user: ApiUser }>(
       "/auth/signup",
@@ -104,6 +122,63 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: data.email,
           password: data.password,
           role: "developer",
+        }),
+        auth: false,
+      }
+    );
+    setToken(response.token);
+    setUser(mapApiUser(response.user));
+  };
+
+  const requestSignupOtp = async (email: string) => {
+    await apiRequest<{ message: string }>("/auth/signup/send-otp", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+      auth: false,
+    });
+  };
+
+  const verifySignupEmailOtp = async (email: string, otp: string) => {
+    const response = await apiRequest<{ message: string; verificationToken: string }>(
+      "/auth/signup/verify-email-otp",
+      {
+        method: "POST",
+        body: JSON.stringify({ email, otp }),
+        auth: false,
+      }
+    );
+
+    return response.verificationToken;
+  };
+
+  const verifySignupOtp = async (data: SignupData & { otp: string }) => {
+    const response = await apiRequest<{ token: string; user: ApiUser }>(
+      "/auth/signup/verify-otp",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          name: `${data.firstName} ${data.lastName}`.trim(),
+          email: data.email,
+          password: data.password,
+          otp: data.otp,
+        }),
+        auth: false,
+      }
+    );
+    setToken(response.token);
+    setUser(mapApiUser(response.user));
+  };
+
+  const completeVerifiedSignup = async (data: SignupData & { verificationToken: string }) => {
+    const response = await apiRequest<{ token: string; user: ApiUser }>(
+      "/auth/signup/complete-verified",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          name: `${data.firstName} ${data.lastName}`.trim(),
+          email: data.email,
+          password: data.password,
+          verificationToken: data.verificationToken,
         }),
         auth: false,
       }
@@ -153,7 +228,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, isLoading, login, signup, signupAdmin, logout, updateProfile }}
+      value={{
+        user,
+        isLoading,
+        login,
+        authenticateWithGoogle,
+        signup,
+        requestSignupOtp,
+        verifySignupEmailOtp,
+        verifySignupOtp,
+        completeVerifiedSignup,
+        signupAdmin,
+        logout,
+        updateProfile,
+      }}
     >
       {children}
     </AuthContext.Provider>

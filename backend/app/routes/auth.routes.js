@@ -2,6 +2,12 @@ import express from 'express';
 import { body, validationResult } from 'express-validator';
 import {
   signup,
+  getGoogleAuthConfig,
+  googleAuth,
+  sendSignupOtp,
+  verifySignupEmailOtp,
+  verifySignupOtp,
+  completeVerifiedSignup,
   signupAdmin,
   createAdminOrder,
   verifyAdminPayment,
@@ -31,6 +37,29 @@ const validateAdminSignup = [
   body('paymentReference').trim().notEmpty().withMessage('Payment reference is required'),
 ];
 
+const validateSendSignupOtp = [
+  body('email').isEmail().withMessage('Valid email is required'),
+];
+
+const validateVerifySignupOtp = [
+  body('name').trim().notEmpty().withMessage('Name is required'),
+  body('email').isEmail().withMessage('Valid email is required'),
+  body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+  body('otp').isLength({ min: 6, max: 6 }).withMessage('Valid OTP is required'),
+];
+
+const validateVerifySignupEmailOtp = [
+  body('email').isEmail().withMessage('Valid email is required'),
+  body('otp').isLength({ min: 6, max: 6 }).withMessage('Valid OTP is required'),
+];
+
+const validateCompleteVerifiedSignup = [
+  body('name').trim().notEmpty().withMessage('Name is required'),
+  body('email').isEmail().withMessage('Valid email is required'),
+  body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+  body('verificationToken').trim().notEmpty().withMessage('Verification token is required'),
+];
+
 const validateCreateAdminOrder = [
   body('email').isEmail().withMessage('Valid email is required'),
   body('name').trim().notEmpty().withMessage('Name is required'),
@@ -50,6 +79,10 @@ const validateLogin = [
   body('password').notEmpty().withMessage('Password is required')
 ];
 
+const validateGoogleAuth = [
+  body('credential').trim().notEmpty().withMessage('Google credential is required'),
+];
+
 const handleValidationErrors = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -59,6 +92,12 @@ const handleValidationErrors = (req, res, next) => {
 };
 
 // Public routes
+router.get('/google/config', getGoogleAuthConfig);
+router.post('/google', validateGoogleAuth, handleValidationErrors, googleAuth);
+router.post('/signup/send-otp', validateSendSignupOtp, handleValidationErrors, sendSignupOtp);
+router.post('/signup/verify-email-otp', validateVerifySignupEmailOtp, handleValidationErrors, verifySignupEmailOtp);
+router.post('/signup/verify-otp', validateVerifySignupOtp, handleValidationErrors, verifySignupOtp);
+router.post('/signup/complete-verified', validateCompleteVerifiedSignup, handleValidationErrors, completeVerifiedSignup);
 router.post('/signup', validateSignup, handleValidationErrors, signup);
 router.post('/signup/admin', validateAdminSignup, handleValidationErrors, signupAdmin);
 router.post('/signup/admin/order', validateCreateAdminOrder, handleValidationErrors, createAdminOrder);

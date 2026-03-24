@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
 import { CreditCard, Loader2, ShieldCheck } from "lucide-react";
@@ -9,6 +9,8 @@ import { CreditCard, Loader2, ShieldCheck } from "lucide-react";
 import { apiRequest } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Field, FieldLabel } from "@/components/ui/field";
 
 const ADMIN_SIGNUP_STORAGE_KEY = "pending-admin-signup";
 const ADMIN_PLAN_AMOUNT = 499;
@@ -84,16 +86,31 @@ const loadRazorpayScript = () =>
     document.body.appendChild(script);
   });
 
-export default function AdminPaymentPage() {
+function AdminPaymentPageContent() {
   const [pendingSignup, setPendingSignup] = useState<PendingSignupData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   useEffect(() => {
     const rawValue = sessionStorage.getItem(ADMIN_SIGNUP_STORAGE_KEY);
+    const prefetchedEmail = searchParams.get("email")?.trim() || "";
+
+    if (!rawValue && prefetchedEmail) {
+      const bootstrapData = {
+        email: prefetchedEmail,
+        firstName: "",
+        lastName: "",
+        password: "",
+      };
+      sessionStorage.setItem(ADMIN_SIGNUP_STORAGE_KEY, JSON.stringify(bootstrapData));
+      setPendingSignup(bootstrapData);
+      return;
+    }
+
     if (!rawValue) {
-      toast.error("Start from the signup form before completing admin payment.");
+      toast.error("Start from the signup flow before completing admin payment.");
       router.replace("/signup");
       return;
     }
@@ -106,11 +123,21 @@ export default function AdminPaymentPage() {
       toast.error("Your admin signup session expired. Please fill the form again.");
       router.replace("/signup");
     }
-  }, [router]);
+  }, [router, searchParams]);
 
   const handlePayment = async () => {
     if (!pendingSignup) {
       toast.error("Admin signup details are missing.");
+      return;
+    }
+
+    if (!pendingSignup.firstName.trim() || !pendingSignup.lastName.trim()) {
+      toast.error("Enter your first and last name before continuing.");
+      return;
+    }
+
+    if (pendingSignup.password.trim().length < 6) {
+      toast.error("Password must be at least 6 characters.");
       return;
     }
 
@@ -204,6 +231,62 @@ export default function AdminPaymentPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+            <div className="grid grid-cols-2 gap-4">
+              <Field>
+                <FieldLabel htmlFor="adminFirstName">First Name</FieldLabel>
+                <Input
+                  id="adminFirstName"
+                  value={pendingSignup.firstName}
+                  onChange={(event) => {
+                    const nextValue = { ...pendingSignup, firstName: event.target.value };
+                    setPendingSignup(nextValue);
+                    sessionStorage.setItem(ADMIN_SIGNUP_STORAGE_KEY, JSON.stringify(nextValue));
+                  }}
+                  placeholder="John"
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="adminLastName">Last Name</FieldLabel>
+                <Input
+                  id="adminLastName"
+                  value={pendingSignup.lastName}
+                  onChange={(event) => {
+                    const nextValue = { ...pendingSignup, lastName: event.target.value };
+                    setPendingSignup(nextValue);
+                    sessionStorage.setItem(ADMIN_SIGNUP_STORAGE_KEY, JSON.stringify(nextValue));
+                  }}
+                  placeholder="Doe"
+                />
+              </Field>
+            </div>
+            <Field>
+              <FieldLabel htmlFor="adminEmail">Email</FieldLabel>
+              <Input
+                id="adminEmail"
+                type="email"
+                value={pendingSignup.email}
+                onChange={(event) => {
+                  const nextValue = { ...pendingSignup, email: event.target.value };
+                  setPendingSignup(nextValue);
+                  sessionStorage.setItem(ADMIN_SIGNUP_STORAGE_KEY, JSON.stringify(nextValue));
+                }}
+                placeholder="you@example.com"
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="adminPassword">Password</FieldLabel>
+              <Input
+                id="adminPassword"
+                type="password"
+                value={pendingSignup.password}
+                onChange={(event) => {
+                  const nextValue = { ...pendingSignup, password: event.target.value };
+                  setPendingSignup(nextValue);
+                  sessionStorage.setItem(ADMIN_SIGNUP_STORAGE_KEY, JSON.stringify(nextValue));
+                }}
+                placeholder="Create a password"
+              />
+            </Field>
             <div className="rounded-lg border bg-background p-4">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Admin plan</span>
@@ -236,5 +319,13 @@ export default function AdminPaymentPage() {
           </CardFooter>
       </Card>
     </div>
+  );
+}
+
+export default function AdminPaymentPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-muted/30" />}>
+      <AdminPaymentPageContent />
+    </Suspense>
   );
 }
