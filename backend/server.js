@@ -1,7 +1,6 @@
 import express from 'express';
 import cors from 'cors';
 import mongoose from 'mongoose';
-import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -14,8 +13,6 @@ import requestRoutes from './app/routes/request.routes.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const envPath = path.join(__dirname, '.env');
-
-dotenv.config({ path: envPath });
 
 mongoose.set('bufferCommands', false);
 
@@ -33,7 +30,17 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Database connection
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/project_management';
+const MONGODB_URI = process.env.MONGODB_URI;
+
+if (!MONGODB_URI) {
+  console.error("❌ MONGODB_URI is missing");
+  process.exit(1);
+}
+
+console.log("ENV CHECK:", {
+  MONGODB_URI: process.env.MONGODB_URI ? "FOUND ✅" : "MISSING ❌",
+  PORT: process.env.PORT
+});
 
 // API routes (must match frontend: NEXT_PUBLIC_API_BASE_URL + /auth, /projects, …)
 app.use('/api/auth', authRoutes);
@@ -80,5 +87,7 @@ async function startServer() {
 }
 
 startServer();
+
+console.log("MONGO URI:", process.env.MONGODB_URI);
 
 export default app;

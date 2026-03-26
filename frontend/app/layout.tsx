@@ -1,7 +1,6 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { Analytics } from "@vercel/analytics/next";
 import { Toaster } from "sonner";
 import { AuthProvider } from "@/lib/auth-context";
 import { DataProvider } from "@/lib/data-context";
@@ -28,7 +27,6 @@ export default function RootLayout({
             <Toaster position="top-right" richColors />
           </DataProvider>
         </AuthProvider>
-        <Analytics />
       </body>
     </html>
   );

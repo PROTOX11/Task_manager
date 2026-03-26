@@ -1,7 +1,6 @@
 version: "3.8"
 
 services:
-
   mongodb:
     image: mongo:6
     container_name: mongodb
@@ -13,25 +12,32 @@ services:
     networks:
       - app-network
 
-  backend:
-    image: prakash1142/mean-backend   # ✅ use Docker Hub image
-    container_name: backend
+    backend:
+    image: prakash1142/mean-backend
     restart: always
     ports:
-      - "5000:5000"
-    env_file:
-      - .env   # ✅ use .env
+      - "5500:5000"
+    environment:
+      PORT: ${PORT}
+      MONGODB_URI: ${MONGODB_URI}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRE: ${JWT_EXPIRE}
+      BREVO_API_KEY: ${BREVO_API_KEY}
+      BREVO_SENDER_EMAIL: ${BREVO_SENDER_EMAIL}
+      BREVO_SENDER_NAME: ${BREVO_SENDER_NAME}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET}
     depends_on:
       - mongodb
-    networks:
-      - app-network
 
   frontend:
-    image: prakash1142/mean-frontend  # ✅ use Docker Hub image
+    image: prakash1142/mean-frontend # ✅ use Docker Hub image
     container_name: frontend
     restart: always
     ports:
-      - "80:3000"
+      - "8080:3000"
     depends_on:
       - backend
     environment:
