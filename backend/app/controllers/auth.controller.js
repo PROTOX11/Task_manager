@@ -535,7 +535,7 @@ export const createAdminOrder = async (req, res) => {
       currency: 'INR',
       receipt: `admin_${Date.now()}`,
       notes: {
-        plan: 'TaskFlow Admin',
+        plan: 'Tickzen Admin',
       },
     });
 

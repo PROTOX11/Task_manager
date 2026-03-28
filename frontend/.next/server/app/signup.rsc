@@ -20,5 +20,5 @@ a:{}
 b:"$0:f:0:1:2:children:2:children:1:props:children:0:props:params"
 11:[["$","meta","0",{"charSet":"utf-8"}],["$","meta","1",{"name":"viewport","content":"width=device-width, initial-scale=1"}]]
 d:null
-f:{"metadata":[["$","title","0",{"children":"TaskFlow - Project & Task Management"}],["$","meta","1",{"name":"description","content":"A powerful project and task management application"}]],"error":null,"digest":"$undefined"}
+f:{"metadata":[["$","title","0",{"children":"Tickzen - Project & Task Management"}],["$","meta","1",{"name":"description","content":"A powerful project and task management application"}]],"error":null,"digest":"$undefined"}
 14:"$f:metadata"

@@ -170,7 +170,7 @@ var __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$lib$2f$data$2d$c
 ;
 ;
 const metadata = {
-    title: "TaskFlow - Project & Task Management",
+    title: "Tickzen - Project & Task Management",
     description: "A powerful project and task management application"
 };
 function RootLayout({ children }) {

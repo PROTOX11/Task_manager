@@ -204,7 +204,7 @@ function SignupPageContent() {
             <CheckSquare className="h-6 w-6 text-primary-foreground" />
           </div>
           <CardTitle className="text-2xl">Create an Account</CardTitle>
-          <CardDescription>Join TaskFlow to start managing your projects</CardDescription>
+          <CardDescription>Join Tickzen to start managing your projects</CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">

@@ -164,7 +164,7 @@ function AdminPaymentPageContent() {
         key: orderResponse.keyId,
         amount: orderResponse.order ? orderResponse.amount * 100 : ADMIN_PLAN_AMOUNT * 100,
         currency: orderResponse.currency,
-        name: "TaskFlow Admin",
+        name: "Tickzen Admin",
         description: "Admin access activation",
         order_id: orderResponse.order.id,
         prefill: {
@@ -300,7 +300,7 @@ function AdminPaymentPageContent() {
             <div className="rounded-lg border bg-background p-4">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Admin plan</span>
-                <span className="font-medium">TaskFlow Admin</span>
+                <span className="font-medium">Tickzen Admin</span>
               </div>
               <div className="mt-3 flex items-end justify-between">
                 <div>

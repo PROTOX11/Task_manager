@@ -42,7 +42,7 @@ export function LoginForm() {
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-primary">
             <CheckSquare className="h-6 w-6 text-primary-foreground" />
           </div>
-          <CardTitle className="text-2xl">Welcome to TaskFlow</CardTitle>
+          <CardTitle className="text-2xl">Welcome to Tickzen</CardTitle>
           <CardDescription>Sign in to manage your projects and tasks</CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
