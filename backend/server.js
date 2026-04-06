@@ -3,16 +3,20 @@ import cors from 'cors';
 import mongoose from 'mongoose';
 import path from 'path';
 import { fileURLToPath } from 'url';
-
+import dotenv from 'dotenv';
 import authRoutes from './app/routes/auth.routes.js';
 import projectRoutes from './app/routes/project.routes.js';
+import projectCollaborationRoutes from './app/routes/project.collaboration.routes.js';
 import taskRoutes from './app/routes/task.routes.js';
 import panelRoutes from './app/routes/panel.routes.js';
 import requestRoutes from './app/routes/request.routes.js';
+import notificationRoutes from './app/routes/notification.routes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const envPath = path.join(__dirname, '.env');
+
+dotenv.config();
 
 mongoose.set('bufferCommands', false);
 
@@ -45,9 +49,11 @@ console.log("ENV CHECK:", {
 // API routes (must match frontend: NEXT_PUBLIC_API_BASE_URL + /auth, /projects, …)
 app.use('/api/auth', authRoutes);
 app.use('/api/projects', projectRoutes);
+app.use('/api/projects', projectCollaborationRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/panels', panelRoutes);
 app.use('/api/requests', requestRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

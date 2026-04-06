@@ -6,6 +6,7 @@ import {
   getTaskById,
   createTask,
   updateTask,
+  addTaskComment,
   completeTask,
   approveTask,
   rejectTask,
@@ -40,13 +41,16 @@ router.get('/:id', getTaskById);
 router.get('/:id/download', downloadAttachment);
 
 // Create task (admin only)
-router.post('/', authorizeAdmin, upload.single('attachment'), validateTask, createTask);
+router.post('/', authorizeAdmin, upload.array('attachments', 10), validateTask, createTask);
 
 // Update task (admin only)
-router.put('/:id', authorizeAdmin, upload.single('attachment'), updateTask);
+router.put('/:id', authorizeAdmin, upload.array('attachments', 10), updateTask);
 
 // Update task status
 router.patch('/:id/status', updateTaskStatus);
+
+// Add comment to task
+router.post('/:id/comments', addTaskComment);
 
 // Mark task as completed (developer)
 router.put('/:id/complete', completeTask);

@@ -13,9 +13,10 @@ import { CheckSquare, Loader2 } from "lucide-react";
 
 export function LoginForm() {
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [otp, setOtp] = useState("");
+  const [step, setStep] = useState<"form" | "otp">("form");
   const [isLoading, setIsLoading] = useState(false);
-  const { login } = useAuth();
+  const { requestLoginOtp, verifyLoginOtp } = useAuth();
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -23,12 +24,29 @@ export function LoginForm() {
     setIsLoading(true);
 
     try {
-      await login(email, password);
+      if (step === "form") {
+        await requestLoginOtp(email);
+        setStep("otp");
+        setOtp("");
+        toast.success("OTP sent to your email.");
+        return;
+      }
+
+      if (otp.trim().length !== 6) {
+        toast.error("Enter the 6-digit OTP sent to your email.");
+        return;
+      }
+
+      await verifyLoginOtp(email, otp.trim());
       toast.success("Welcome back!");
       router.push("/dashboard");
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : "Invalid email or password";
+        error instanceof Error ? error.message : "Unable to continue";
+      if (message.toLowerCase().includes("no account found")) {
+        toast.error("No account found. Please sign up first.");
+        return;
+      }
       toast.error(message);
     } finally {
       setIsLoading(false);
@@ -58,22 +76,25 @@ export function LoginForm() {
                 required
               />
             </Field>
-            <Field>
-              <FieldLabel htmlFor="password">Password</FieldLabel>
-              <Input
-                id="password"
-                type="password"
-                placeholder="Enter your password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </Field>
+            {step === "otp" && (
+              <Field>
+                <FieldLabel htmlFor="otp">OTP</FieldLabel>
+                <Input
+                  id="otp"
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="Enter the 6-digit OTP"
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  required
+                />
+              </Field>
+            )}
           </CardContent>
           <CardFooter className="flex flex-col gap-4">
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Sign In
+              {step === "form" ? "Send OTP" : "Verify OTP"}
             </Button>
             <p className="text-sm text-muted-foreground">
               Don&apos;t have an account?{" "}

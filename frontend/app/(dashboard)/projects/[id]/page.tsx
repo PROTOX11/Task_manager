@@ -1,10 +1,11 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useData } from "@/lib/data-context";
 import { KanbanBoard } from "@/components/projects/kanban-board";
 import { ProjectHeader } from "@/components/projects/project-header";
+import { ProjectCollaborationPanel } from "@/components/projects/project-collaboration-panel";
 import { TaskDialog } from "@/components/tasks/task-dialog";
 import { CreateTaskDialog } from "@/components/tasks/create-task-dialog";
 import type { Task } from "@/lib/types";
@@ -12,11 +13,35 @@ import type { Task } from "@/lib/types";
 export default function ProjectPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { getProjectById } = useData();
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [createTaskPanelId, setCreateTaskPanelId] = useState<string | null>(null);
 
   const project = getProjectById(params.id as string);
+  const taskFromRoute = searchParams.get("task")?.trim() || "";
+  const selectedTask = useMemo(() => {
+    if (!project || !selectedTaskId) return null;
+    for (const panel of project.panels) {
+      const task = panel.tasks.find((currentTask) => currentTask.id === selectedTaskId);
+      if (task) return task;
+    }
+    return null;
+  }, [project, selectedTaskId]);
+
+  useEffect(() => {
+    if (taskFromRoute) {
+      setSelectedTaskId(taskFromRoute);
+    }
+  }, [taskFromRoute]);
+
+  useEffect(() => {
+    if (!selectedTaskId || !project) return;
+    const currentTask = project.panels.flatMap((panel) => panel.tasks).find((task) => task.id === selectedTaskId);
+    if (!currentTask) {
+      setSelectedTaskId(null);
+    }
+  }, [project, selectedTaskId]);
 
   if (!project) {
     return (
@@ -42,14 +67,16 @@ export default function ProjectPage() {
       <ProjectHeader project={project} />
       <KanbanBoard
         project={project}
-        onTaskClick={setSelectedTask}
+        onTaskClick={(task) => setSelectedTaskId(task.id)}
         onAddTask={setCreateTaskPanelId}
       />
+
+      <ProjectCollaborationPanel project={project} />
 
       <TaskDialog
         task={selectedTask}
         project={project}
-        onClose={() => setSelectedTask(null)}
+        onClose={() => setSelectedTaskId(null)}
       />
 
       <CreateTaskDialog

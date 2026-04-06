@@ -12,6 +12,7 @@ export interface Project {
   id: string;
   name: string;
   description: string;
+  githubRepository?: string;
   status: 'active' | 'completed' | 'archived';
   owner: User;
   members: ProjectMember[];
@@ -84,6 +85,41 @@ export interface ProjectRequest {
   status: 'pending' | 'accepted' | 'rejected';
   message?: string;
   createdAt: string;
+}
+
+export interface Notification {
+  id: string;
+  userId: string;
+  sender?: User;
+  taskId?: string;
+  projectId?: string;
+  type: "due_date_updated" | "task_assigned" | "comment_mentioned" | "project_chat_dm";
+  title: string;
+  message: string;
+  read: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  projectId: string;
+  sender: User;
+  recipient?: User | null;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Meeting {
+  id: string;
+  projectId: string;
+  createdBy: User;
+  title: string;
+  scheduledFor: string;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface DashboardStats {

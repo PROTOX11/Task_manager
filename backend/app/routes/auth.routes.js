@@ -5,8 +5,10 @@ import {
   getGoogleAuthConfig,
   googleAuth,
   sendSignupOtp,
+  sendLoginOtp,
   verifySignupEmailOtp,
   verifySignupOtp,
+  verifyLoginOtp,
   completeVerifiedSignup,
   signupAdmin,
   createAdminOrder,
@@ -41,10 +43,19 @@ const validateSendSignupOtp = [
   body('email').isEmail().withMessage('Valid email is required'),
 ];
 
+const validateSendLoginOtp = [
+  body('email').isEmail().withMessage('Valid email is required'),
+];
+
 const validateVerifySignupOtp = [
   body('name').trim().notEmpty().withMessage('Name is required'),
   body('email').isEmail().withMessage('Valid email is required'),
-  body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+  body('password').optional({ nullable: true, checkFalsy: true }).isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+  body('otp').isLength({ min: 6, max: 6 }).withMessage('Valid OTP is required'),
+];
+
+const validateVerifyLoginOtp = [
+  body('email').isEmail().withMessage('Valid email is required'),
   body('otp').isLength({ min: 6, max: 6 }).withMessage('Valid OTP is required'),
 ];
 
@@ -109,8 +120,10 @@ const handleValidationErrors = (req, res, next) => {
 router.get('/google/config', getGoogleAuthConfig);
 router.post('/google', validateGoogleAuth, handleValidationErrors, googleAuth);
 router.post('/signup/send-otp', validateSendSignupOtp, handleValidationErrors, sendSignupOtp);
+router.post('/login/send-otp', validateSendLoginOtp, handleValidationErrors, sendLoginOtp);
 router.post('/signup/verify-email-otp', validateVerifySignupEmailOtp, handleValidationErrors, verifySignupEmailOtp);
 router.post('/signup/verify-otp', validateVerifySignupOtp, handleValidationErrors, verifySignupOtp);
+router.post('/login/verify-otp', validateVerifyLoginOtp, handleValidationErrors, verifyLoginOtp);
 router.post('/signup/complete-verified', validateCompleteVerifiedSignup, handleValidationErrors, completeVerifiedSignup);
 router.post('/signup', validateSignup, handleValidationErrors, signup);
 router.post('/signup/admin', validateAdminSignup, handleValidationErrors, signupAdmin);

@@ -103,12 +103,14 @@ export default function DashboardPage() {
             Here&apos;s what&apos;s happening with your projects today.
           </p>
         </div>
-        <Link href="/projects/new">
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            New Project
-          </Button>
-        </Link>
+        {user?.role === "admin" && (
+          <Link href="/projects/new">
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              New Project
+            </Button>
+          </Link>
+        )}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">

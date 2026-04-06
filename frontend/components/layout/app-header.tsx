@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useData } from "@/lib/data-context";
 import { SidebarTrigger } from "@/components/ui/sidebar";
@@ -41,9 +42,10 @@ export function AppHeader() {
         label = "Project Details";
       }
 
+      const isProjectsIndex = segment === "projects";
       breadcrumbs.push({
         label,
-        href: index < segments.length - 1 ? href : undefined,
+        href: index < segments.length - 1 && !isProjectsIndex ? href : undefined,
       });
     });
 
@@ -59,16 +61,16 @@ export function AppHeader() {
       <Breadcrumb className="flex-1">
         <BreadcrumbList>
           {breadcrumbs.map((crumb, index) => (
-            <BreadcrumbItem key={index}>
-              {crumb.href ? (
-                <>
+            <React.Fragment key={index}>
+              <BreadcrumbItem>
+                {crumb.href ? (
                   <BreadcrumbLink href={crumb.href}>{crumb.label}</BreadcrumbLink>
-                  <BreadcrumbSeparator />
-                </>
-              ) : (
-                <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
-              )}
-            </BreadcrumbItem>
+                ) : (
+                  <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
+                )}
+              </BreadcrumbItem>
+              {index < breadcrumbs.length - 1 && <BreadcrumbSeparator />}
+            </React.Fragment>
           ))}
         </BreadcrumbList>
       </Breadcrumb>

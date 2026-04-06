@@ -1,13 +1,14 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import type { Project, Panel, Task, ProjectRequest, User } from "./types";
+import type { Project, Panel, Task, ProjectRequest, Notification, User } from "./types";
 import { useAuth } from "./auth-context";
 import { apiRequest } from "./api";
 
 interface DataContextType {
   projects: Project[];
   requests: ProjectRequest[];
+  notifications: Notification[];
   createProject: (data: CreateProjectData) => Promise<Project>;
   updateProject: (id: string, data: Partial<Project>) => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
@@ -23,6 +24,8 @@ interface DataContextType {
   addSubtask: (taskId: string, title: string) => Promise<void>;
   sendInvitation: (projectId: string, email: string, message?: string) => Promise<void>;
   respondToRequest: (requestId: string, accept: boolean) => Promise<void>;
+  markNotificationRead: (notificationId: string) => Promise<void>;
+  markAllNotificationsRead: () => Promise<void>;
   getProjectById: (id: string) => Project | undefined;
   getTaskById: (id: string) => Task | undefined;
   getMyTasks: () => Task[];
@@ -31,6 +34,7 @@ interface DataContextType {
 interface CreateProjectData {
   name: string;
   description: string;
+  githubRepository?: string;
 }
 
 interface CreateTaskData {
@@ -41,6 +45,7 @@ interface CreateTaskData {
   priority: Task["priority"];
   dueDate?: string;
   assigneeId?: string;
+  attachments?: File[];
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -78,10 +83,71 @@ const toApiTaskStatus = (status: Task["status"]): string => {
   return "pending";
 };
 
+const mapAttachment = (attachment: any, index: number, projectId: string, taskId: string) => {
+  const filename = attachment?.filename || attachment?.originalName || `attachment-${index + 1}`;
+  const fileNameFromPath = typeof attachment?.path === "string"
+    ? attachment.path.split(/[\\/]/).pop()
+    : "";
+  const resolvedFilename = attachment?.filename || fileNameFromPath || filename;
+
+  return {
+    id: `${taskId}-attachment-${index}`,
+    filename: attachment?.originalName || filename,
+    url: attachment?.url || `/uploads/${resolvedFilename}`,
+    size: attachment?.size || 0,
+    uploadedBy: {
+      id: "",
+      email: "",
+      firstName: "Team",
+      lastName: "Member",
+      role: "developer" as const,
+      createdAt: new Date().toISOString(),
+    },
+    uploadedAt: attachment?.uploadedAt || new Date().toISOString(),
+  };
+};
+
+const mapComment = (comment: any, index: number): Task["comments"][number] => ({
+  id: comment?._id?.toString() || `comment-${index}`,
+  content: comment?.content || "",
+  author: mapApiUser(comment?.author || { id: "", name: "Team Member", email: "", role: "developer" }),
+  createdAt: comment?.createdAt || new Date().toISOString(),
+  updatedAt: comment?.updatedAt || comment?.createdAt || new Date().toISOString(),
+});
+
+const mapNotification = (notification: any): Notification => ({
+  id: notification._id.toString(),
+  userId: notification.userId?.toString() || "",
+  sender: notification.senderId ? mapApiUser(notification.senderId) : undefined,
+  taskId: notification.taskId?._id?.toString() || notification.taskId?.toString(),
+  projectId: notification.projectId?._id?.toString() || notification.projectId?.toString(),
+  type: notification.type,
+  title: notification.title,
+  message: notification.message,
+  read: Boolean(notification.read),
+  createdAt: notification.createdAt || new Date().toISOString(),
+  updatedAt: notification.updatedAt || notification.createdAt || new Date().toISOString(),
+});
+
+const getPanelStatus = (panelName: string): Task["status"] => {
+  const normalized = panelName.toLowerCase();
+  if (normalized.includes("progress")) return "in_progress";
+  if (normalized.includes("review")) return "review";
+  if (normalized.includes("done") || normalized.includes("complete")) return "done";
+  return "todo";
+};
+
+const canUserModifyTask = (user: User | null, task: Task | undefined) => {
+  if (!user || !task) return false;
+  if (user.role === "admin") return true;
+  return task.reporter.id === user.id;
+};
+
 export function DataProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [requests, setRequests] = useState<ProjectRequest[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const loadProjects = async () => {
     if (!user) return;
     const projectResponse = await apiRequest<{ projects: Array<any> }>("/projects");
@@ -97,6 +163,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const apiTasks = taskResponse.tasks || [];
         apiTasks.forEach((apiTask: any, index: number) => {
           const panelId = apiTask.panelId?.toString() || "";
+          const rawAttachments = Array.isArray(apiTask.attachments) && apiTask.attachments.length > 0
+            ? apiTask.attachments
+            : apiTask.attachmentFile
+              ? [apiTask.attachmentFile]
+              : [];
           if (!tasksByPanel[panelId]) tasksByPanel[panelId] = [];
           tasksByPanel[panelId].push({
             id: apiTask._id.toString(),
@@ -109,8 +180,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
             panelId,
             projectId,
             dueDate: apiTask.deadline ? new Date(apiTask.deadline).toISOString() : undefined,
-            attachments: [],
-            comments: [],
+            attachments: rawAttachments.map((attachment: any, attachmentIndex: number) =>
+              mapAttachment(attachment, attachmentIndex, projectId, apiTask._id.toString())
+            ),
+            comments: Array.isArray(apiTask.comments)
+              ? apiTask.comments.map((comment: any, commentIndex: number) => mapComment(comment, commentIndex))
+              : [],
             subtasks: [],
             order: index,
             createdAt: apiTask.createdAt || new Date().toISOString(),
@@ -130,6 +205,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           id: projectId,
           name: apiProject.name,
           description: apiProject.description || "",
+          githubRepository: apiProject.githubRepository || "",
           status: apiProject.status || "active",
           owner,
           members,
@@ -169,17 +245,46 @@ export function DataProvider({ children }: { children: ReactNode }) {
       status: r.status,
       message: r.message,
       createdAt: r.createdAt || new Date().toISOString(),
-    }));
+    })); 
     setRequests(normalized);
+  };
+
+  const loadNotifications = async () => {
+    if (!user) return;
+    const response = await apiRequest<{ notifications: Array<any> }>("/notifications");
+    setNotifications((response.notifications || []).map(mapNotification));
   };
 
   useEffect(() => {
     if (!user) {
       setProjects([]);
       setRequests([]);
+      setNotifications([]);
       return;
     }
-    void Promise.all([loadProjects(), loadRequests()]);
+    let isMounted = true;
+
+    const refresh = async () => {
+      try {
+        await Promise.all([loadProjects(), loadRequests(), loadNotifications()]);
+      } catch (error) {
+        if (isMounted) {
+          console.error("Failed to refresh dashboard data:", error);
+        }
+      }
+    };
+
+    void refresh();
+
+    const intervalDelay = 1000;
+    const interval = window.setInterval(() => {
+      void refresh();
+    }, intervalDelay);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(interval);
+    };
   }, [user]);
 
   const createProject = async (data: CreateProjectData): Promise<Project> => {
@@ -188,6 +293,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({
         name: data.name,
         description: data.description,
+        githubRepository: data.githubRepository || "",
         panels: [{ name: "To Do" }, { name: "In Progress" }, { name: "Done" }],
       }),
     });
@@ -196,6 +302,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       id: response.project._id.toString(),
       name: response.project.name,
       description: response.project.description || "",
+      githubRepository: response.project.githubRepository || data.githubRepository || "",
       status: response.project.status || "active",
       owner: user!,
       members: [{ user: user!, role: "owner", joinedAt: new Date().toISOString() }],
@@ -212,6 +319,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         name: data.name,
         description: data.description,
         status: data.status,
+        githubRepository: data.githubRepository,
       }),
     });
     await loadProjects();
@@ -255,19 +363,43 @@ export function DataProvider({ children }: { children: ReactNode }) {
   };
 
   const createTask = async (data: CreateTaskData): Promise<Task> => {
-    const response = await apiRequest<{ task: any }>("/tasks", {
-      method: "POST",
-      body: JSON.stringify({
-        title: data.title,
-        description: data.description,
-        projectId: data.projectId,
-        panelId: data.panelId,
-        assignedDeveloper: data.assigneeId,
-        priority: data.priority,
-        deadline: data.dueDate,
-      }),
-    });
+    const hasFiles = Array.isArray(data.attachments) && data.attachments.length > 0;
+    const response = hasFiles
+      ? await apiRequest<{ task: any }>("/tasks", {
+          method: "POST",
+          body: (() => {
+            const formData = new FormData();
+            formData.append("title", data.title);
+            formData.append("description", data.description);
+            formData.append("projectId", data.projectId);
+            formData.append("panelId", data.panelId);
+            formData.append("priority", data.priority);
+            if (data.assigneeId) formData.append("assignedDeveloper", data.assigneeId);
+            if (data.dueDate) formData.append("deadline", data.dueDate);
+            data.attachments?.forEach((file) => {
+              formData.append("attachments", file);
+            });
+            return formData;
+          })(),
+        })
+      : await apiRequest<{ task: any }>("/tasks", {
+          method: "POST",
+          body: JSON.stringify({
+            title: data.title,
+            description: data.description,
+            projectId: data.projectId,
+            panelId: data.panelId,
+            assignedDeveloper: data.assigneeId,
+            priority: data.priority,
+            deadline: data.dueDate,
+          }),
+        });
     await loadProjects();
+    const rawAttachments = Array.isArray(response.task.attachments) && response.task.attachments.length > 0
+      ? response.task.attachments
+      : response.task.attachmentFile
+        ? [response.task.attachmentFile]
+        : [];
     return {
       id: response.task._id.toString(),
       title: response.task.title,
@@ -278,8 +410,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       panelId: response.task.panelId?.toString() || data.panelId,
       projectId: response.task.projectId?.toString() || data.projectId,
       dueDate: response.task.deadline ? new Date(response.task.deadline).toISOString() : undefined,
-      attachments: [],
-      comments: [],
+      attachments: rawAttachments.map((attachment: any, attachmentIndex: number) =>
+        mapAttachment(attachment, attachmentIndex, data.projectId, response.task._id.toString())
+      ),
+      comments: Array.isArray(response.task.comments)
+        ? response.task.comments.map((comment: any, commentIndex: number) => mapComment(comment, commentIndex))
+        : [],
       subtasks: [],
       order: 0,
       createdAt: response.task.createdAt || new Date().toISOString(),
@@ -293,6 +429,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (data.priority) payload.priority = data.priority;
     if (data.title !== undefined) payload.title = data.title;
     if (data.description !== undefined) payload.description = data.description;
+    if (data.dueDate !== undefined) payload.deadline = data.dueDate;
     if (data.panelId) payload.panelId = data.panelId;
     if (Object.keys(payload).length === 1 && payload.status) {
       await apiRequest(`/tasks/${taskId}/status`, {
@@ -300,6 +437,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ status: payload.status }),
       });
     } else {
+      const task = projects
+        .flatMap((project) => project.panels)
+        .flatMap((panel) => panel.tasks)
+        .find((currentTask) => currentTask.id === taskId);
+
+      if (!canUserModifyTask(user, task)) {
+        throw new Error("You cannot modify tasks created by an admin.");
+      }
+
       await apiRequest(`/tasks/${taskId}`, {
         method: "PUT",
         body: JSON.stringify(payload),
@@ -309,6 +455,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
   };
 
   const deleteTask = async (taskId: string) => {
+    const task = projects
+      .flatMap((project) => project.panels)
+      .flatMap((panel) => panel.tasks)
+      .find((currentTask) => currentTask.id === taskId);
+
+    if (!canUserModifyTask(user, task)) {
+      throw new Error("You cannot modify tasks created by an admin.");
+    }
+
     await apiRequest(`/tasks/${taskId}`, { method: "DELETE" });
     setProjects((prev) =>
       prev.map((p) => ({
@@ -322,36 +477,56 @@ export function DataProvider({ children }: { children: ReactNode }) {
   };
 
   const moveTask = async (taskId: string, newPanelId: string) => {
+    const targetPanel = projects
+      .flatMap((project) => project.panels)
+      .find((panel) => panel.id === newPanelId);
+
+    if (user?.role === "developer") {
+      const panelStatus = targetPanel ? getPanelStatus(targetPanel.name) : "in_progress";
+      await apiRequest(`/tasks/${taskId}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          panelId: newPanelId,
+          status: toApiTaskStatus(panelStatus),
+        }),
+      });
+      await loadProjects();
+      return;
+    }
+
     await updateTask(taskId, { panelId: newPanelId });
   };
 
   const addComment = async (taskId: string, content: string) => {
     if (!user) return;
 
-    const newComment = {
-      id: `comment-${Date.now()}`,
-      content,
-      author: user,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+    await apiRequest(`/tasks/${taskId}/comments`, {
+      method: "POST",
+      body: JSON.stringify({ content }),
+    });
+    await loadProjects();
+  };
 
-    setProjects((prev) =>
-      prev.map((p) => ({
-        ...p,
-        panels: p.panels.map((panel) => ({
-          ...panel,
-          tasks: panel.tasks.map((task) =>
-            task.id === taskId
-              ? { ...task, comments: [...task.comments, newComment] }
-              : task
-          ),
-        })),
-      }))
-    );
+  const markNotificationRead = async (notificationId: string) => {
+    await apiRequest(`/notifications/${notificationId}/read`, { method: "PATCH" });
+    await loadNotifications();
+  };
+
+  const markAllNotificationsRead = async () => {
+    await apiRequest("/notifications/read-all", { method: "PATCH" });
+    await loadNotifications();
   };
 
   const toggleSubtask = async (taskId: string, subtaskId: string) => {
+    const task = projects
+      .flatMap((project) => project.panels)
+      .flatMap((panel) => panel.tasks)
+      .find((currentTask) => currentTask.id === taskId);
+
+    if (!canUserModifyTask(user, task)) {
+      throw new Error("You cannot modify tasks created by an admin.");
+    }
+
     setProjects((prev) =>
       prev.map((p) => ({
         ...p,
@@ -373,6 +548,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
   };
 
   const addSubtask = async (taskId: string, title: string) => {
+    const task = projects
+      .flatMap((project) => project.panels)
+      .flatMap((panel) => panel.tasks)
+      .find((currentTask) => currentTask.id === taskId);
+
+    if (!canUserModifyTask(user, task)) {
+      throw new Error("You cannot modify tasks created by an admin.");
+    }
+
     const newSubtask = {
       id: `subtask-${Date.now()}`,
       title,
@@ -448,6 +632,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       value={{
         projects,
         requests,
+        notifications,
         createProject,
         updateProject,
         deleteProject,
@@ -463,6 +648,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         addSubtask,
         sendInvitation,
         respondToRequest,
+        markNotificationRead,
+        markAllNotificationsRead,
         getProjectById,
         getTaskById,
         getMyTasks,

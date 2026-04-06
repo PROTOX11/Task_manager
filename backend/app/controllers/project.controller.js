@@ -48,11 +48,12 @@ export const getAllProjects = async (req, res) => {
 // Create new project (admin only)
 export const createProject = async (req, res) => {
   try {
-    const { name, description, panels } = req.body;
+    const { name, description, panels, githubRepository } = req.body;
 
     const project = new Project({
       name,
       description,
+      githubRepository: githubRepository || '',
       createdBy: req.userId
     });
 
@@ -128,7 +129,7 @@ export const getProjectById = async (req, res) => {
 export const updateProject = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, description, status } = req.body;
+    const { name, description, status, githubRepository } = req.body;
 
     const project = await Project.findById(id);
     if (!project) {
@@ -142,6 +143,7 @@ export const updateProject = async (req, res) => {
 
     if (name) project.name = name;
     if (description !== undefined) project.description = description;
+    if (githubRepository !== undefined) project.githubRepository = githubRepository;
     if (status) project.status = status;
 
     await project.save();

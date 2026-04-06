@@ -4,10 +4,9 @@ import Link from "next/link";
 import Image from "next/image";
 import { GoogleAuthButton } from "@/components/google-auth-button";
 import { useAuth } from "@/lib/auth-context";
-import { decodeGoogleSignupProfile, type GoogleSignupProfile } from "@/lib/google-signup";
 import { useRouter } from "next/navigation";
 import { CSSProperties, FormEvent, useCallback, useEffect, useState } from "react";
-import { ArrowRight, CheckCircle2, ChevronRight, Loader2, Sparkles, Star, Layout, Search } from "lucide-react";
+import { ArrowRight, ChevronRight, Loader2, Sparkles, Star, Layout, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,16 +39,15 @@ const introParticles = [
 ];
 
 export default function HomePage() {
-  const { user, isLoading, authenticateWithGoogle, requestSignupOtp, verifySignupEmailOtp } = useAuth();
+  const { user, isLoading, authenticateWithGoogle, requestLoginOtp, verifyLoginOtp, requestSignupOtp, verifySignupOtp } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState("");
-  const [signupOtp, setSignupOtp] = useState("");
+  const [name, setName] = useState("");
+  const [otp, setOtp] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [authMode, setAuthMode] = useState<"signup" | "login">("signup");
+  const [authStep, setAuthStep] = useState<"form" | "otp">("form");
   const [introStage, setIntroStage] = useState<"loading" | "strike" | "ready">("loading");
-  const [signupStep, setSignupStep] = useState<"email" | "otp" | "verified">("email");
-  const [verifiedSignupToken, setVerifiedSignupToken] = useState("");
-  const [pendingGoogleSignup, setPendingGoogleSignup] = useState<GoogleSignupProfile | null>(null);
-  const roleSelectionOpen = (signupStep === "verified" && Boolean(verifiedSignupToken)) || Boolean(pendingGoogleSignup);
 
   useEffect(() => {
     if (!isLoading && user) {
@@ -68,36 +66,81 @@ export default function HomePage() {
   }, [isLoading, user]);
 
   useEffect(() => {
-    if (signupStep !== "email" && !email.trim()) {
-      setSignupStep("email");
-      setSignupOtp("");
-      setVerifiedSignupToken("");
+    if (authStep === "otp" && !email.trim()) {
+      setAuthStep("form");
+      setOtp("");
     }
-  }, [email, signupStep]);
+  }, [authStep, email]);
 
-  const handleSignupSubmit = async (event: FormEvent<HTMLFormElement>) => {
+  const handlePrimarySubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsSubmitting(true);
     try {
-      if (signupStep === "email") {
-        await requestSignupOtp(email.trim());
-        setSignupStep("otp");
-        setSignupOtp("");
-        toast.success("OTP sent to your email.");
-        return;
-      }
-      if (signupStep === "otp") {
-        if (signupOtp.trim().length !== 6) {
+      if (authMode === "login") {
+        if (authStep === "form") {
+          await requestLoginOtp(email.trim());
+          setAuthStep("otp");
+          setOtp("");
+          toast.success("OTP sent to your email.");
+          return;
+        }
+
+        if (otp.trim().length !== 6) {
           toast.error("Enter the 6-digit OTP sent to your email.");
           return;
         }
-        const verificationToken = await verifySignupEmailOtp(email.trim(), signupOtp.trim());
-        setVerifiedSignupToken(verificationToken);
-        setSignupStep("verified");
-        toast.success("Email verified. Continue to complete your signup.");
+
+        await verifyLoginOtp(email.trim(), otp.trim());
+        toast.success("Welcome back!");
+        router.push("/dashboard");
+        return;
       }
+
+      if (authStep === "form") {
+        await requestSignupOtp(email.trim());
+        setAuthStep("otp");
+        setOtp("");
+        toast.success("OTP sent to your email.");
+        return;
+      }
+
+      if (otp.trim().length !== 6) {
+        toast.error("Enter the 6-digit OTP sent to your email.");
+        return;
+      }
+
+      await verifySignupOtp({
+        email: email.trim(),
+        password: "",
+        firstName: name.trim(),
+        lastName: "",
+        otp: otp.trim(),
+      });
+      toast.success("Account created successfully!");
+      router.push("/dashboard");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to continue signup";
+      const message = error instanceof Error ? error.message : "Unable to continue";
+      if (authMode === "login" && authStep === "form" && message.toLowerCase().includes("no account found")) {
+        setAuthMode("signup");
+        setAuthStep("form");
+        setOtp("");
+        toast.error("No account found. Please complete signup with your name and email.");
+        return;
+      }
+      if (authMode === "signup" && authStep === "form" && message.toLowerCase().includes("already exists")) {
+        setAuthMode("login");
+        setAuthStep("form");
+        setOtp("");
+        try {
+          await requestLoginOtp(email.trim());
+          setAuthStep("otp");
+          toast.success("Account already exists. We sent a login OTP instead.");
+        } catch (loginOtpError) {
+          const loginMessage = loginOtpError instanceof Error ? loginOtpError.message : "Unable to send login OTP";
+          toast.error(loginMessage);
+        }
+        return;
+      }
       toast.error(message);
     } finally {
       setIsSubmitting(false);
@@ -105,52 +148,15 @@ export default function HomePage() {
   };
 
   const handleGoogleAuth = useCallback(async (credential: string) => {
-    const profile = decodeGoogleSignupProfile(credential);
-
-    if (!profile) {
-      toast.error("Google did not return a valid account profile.");
-      return;
-    }
-
-    setPendingGoogleSignup(profile);
-  }, []);
-
-  const completeGoogleDeveloperSignup = useCallback(async () => {
-    if (!pendingGoogleSignup) {
-      toast.error("Google signup details are missing.");
-      return;
-    }
-
     try {
-      await authenticateWithGoogle(pendingGoogleSignup.credential);
+      await authenticateWithGoogle(credential);
       toast.success("Signed in with Google.");
       router.push("/dashboard");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Google sign-in failed";
       toast.error(message);
     }
-  }, [authenticateWithGoogle, pendingGoogleSignup, router]);
-
-  const continueGoogleAdminSignup = useCallback(() => {
-    if (!pendingGoogleSignup) {
-      toast.error("Google signup details are missing.");
-      return;
-    }
-
-    sessionStorage.setItem(
-      "pending-admin-signup",
-      JSON.stringify({
-        email: pendingGoogleSignup.email,
-        password: "",
-        firstName: pendingGoogleSignup.firstName,
-        lastName: pendingGoogleSignup.lastName,
-        googleCredential: pendingGoogleSignup.credential,
-      })
-    );
-
-    toast.success("Continue to payment to unlock admin access.");
-    router.push(`/signup/admin-payment?email=${encodeURIComponent(pendingGoogleSignup.email)}`);
-  }, [pendingGoogleSignup, router]);
+  }, [authenticateWithGoogle, router]);
 
   if (isLoading) {
     return (
@@ -195,7 +201,7 @@ export default function HomePage() {
           </div>
         )}
 
-        <div className={`mx-auto flex w-full flex-col gap-4 transition-all duration-700 xl:gap-5 ${introStage === "ready" ? "opacity-100 blur-0" : "opacity-20 blur-[2px] saturate-75"} ${roleSelectionOpen ? "pointer-events-none blur-sm" : ""}`}>
+        <div className={`mx-auto flex w-full flex-col gap-4 transition-all duration-700 xl:gap-5 ${introStage === "ready" ? "opacity-100 blur-0" : "opacity-20 blur-[2px] saturate-75"}`}>
           <header className="landing-card landing-card-1 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <nav className="mx-auto w-full max-w-[920px] rounded-full bg-[#d9d7d5] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] lg:mx-0">
               <div className="flex flex-wrap items-center justify-center gap-3">
@@ -221,33 +227,86 @@ export default function HomePage() {
               <div className="relative mb-4 flex justify-center">
                 <p className="rounded-full bg-[#ece7e7] px-6 py-2 text-sm font-semibold uppercase tracking-[0.16em] text-[#5f5a5a]">Continue here</p>
               </div>
-              <form onSubmit={handleSignupSubmit} className="space-y-5">
-                {signupStep === "email" && (
-                  <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Enter your email" className="h-14 rounded-full border-0 bg-[#ebe7e7] px-8 text-center text-lg shadow-none placeholder:text-black/70 focus-visible:ring-[#3a7ce7]/30" required />
+              <div className="mb-5 grid grid-cols-2 gap-2 rounded-full bg-[#ddd8d8] p-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode("login");
+                    setAuthStep("form");
+                    setOtp("");
+                  }}
+                  className={`rounded-full px-4 py-2 text-sm font-semibold transition ${authMode === "login" ? "bg-white text-[#2f2f2f] shadow-sm" : "text-[#6b6666]"}`}
+                >
+                  Sign In
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode("signup");
+                    setAuthStep("form");
+                    setOtp("");
+                  }}
+                  className={`rounded-full px-4 py-2 text-sm font-semibold transition ${authMode === "signup" ? "bg-white text-[#2f2f2f] shadow-sm" : "text-[#6b6666]"}`}
+                >
+                  Sign Up
+                </button>
+              </div>
+              <form onSubmit={handlePrimarySubmit} className="space-y-5">
+                {authStep === "form" && authMode === "signup" && (
+                  <Input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Enter your name"
+                    className="h-14 rounded-full border-0 bg-[#ebe7e7] px-8 text-center text-lg shadow-none placeholder:text-black/70 focus-visible:ring-[#3a7ce7]/30"
+                    required
+                  />
                 )}
-                {signupStep === "otp" && (
+                {authStep === "form" && (
+                  <Input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Enter your email"
+                    className="h-14 rounded-full border-0 bg-[#ebe7e7] px-8 text-center text-lg shadow-none placeholder:text-black/70 focus-visible:ring-[#3a7ce7]/30"
+                    required
+                  />
+                )}
+                {authStep === "otp" && (
                   <div className="space-y-3">
                     <p className="text-center text-sm text-[#555]">Enter the OTP sent to <span className="font-medium text-[#222]">{email}</span></p>
-                    <Input type="text" inputMode="numeric" value={signupOtp} onChange={(e) => setSignupOtp(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="Enter OTP" className="h-14 rounded-full border-0 bg-[#ebe7e7] px-8 text-center text-lg shadow-none placeholder:text-black/70 focus-visible:ring-[#3a7ce7]/30" required />
+                    <Input type="text" inputMode="numeric" value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="Enter OTP" className="h-14 rounded-full border-0 bg-[#ebe7e7] px-8 text-center text-lg shadow-none placeholder:text-black/70 focus-visible:ring-[#3a7ce7]/30" required />
+                    <div className="flex justify-center">
+                      <button
+                        type="button"
+                        className="text-sm text-[#666] underline-offset-4 hover:underline"
+                        onClick={() => {
+                          setAuthStep("form");
+                          setOtp("");
+                        }}
+                      >
+                        Change email
+                      </button>
+                    </div>
                   </div>
                 )}
-                {signupStep === "verified" && (
-                  <div className="rounded-[1.75rem] bg-[#ebe7e7] px-6 py-5 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.72)]">
-                    <div className="mb-2 flex items-center justify-center gap-2 text-[#2c7a4b]"><CheckCircle2 className="h-5 w-5" /><span className="font-semibold">Email verified</span></div>
-                    <p className="text-sm text-[#555]">{email} is ready. Choose Developer or Admin.</p>
-                  </div>
-                )}
-                {signupStep !== "verified" ? (
-                  <div className="flex justify-center">
-                    <Button type="submit" disabled={isSubmitting} className="h-auto rounded-full bg-[#1b7fe8] px-9 py-2.5 text-base font-medium text-white shadow-none hover:bg-[#166fd0]">
-                      {isSubmitting ? (signupStep === "email" ? "Sending..." : "Verifying...") : (signupStep === "email" ? "Continue" : "Verify OTP")}
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center gap-3"><button type="button" className="text-sm text-[#666] underline-offset-4 hover:underline" onClick={() => { setSignupStep("email"); setSignupOtp(""); setVerifiedSignupToken(""); }}>Use a different email</button></div>
-                )}
+                <div className="flex justify-center">
+                  <Button type="submit" disabled={isSubmitting} className="h-auto rounded-full bg-[#1b7fe8] px-9 py-2.5 text-base font-medium text-white shadow-none hover:bg-[#166fd0]">
+                    {isSubmitting
+                      ? authStep === "form"
+                        ? "Sending..."
+                        : "Verifying..."
+                      : authMode === "login"
+                        ? authStep === "form"
+                          ? "Send OTP"
+                          : "Verify OTP"
+                        : authStep === "form"
+                          ? "Send OTP"
+                          : "Verify OTP & Create Account"}
+                  </Button>
+                </div>
                 <div className="flex items-center gap-3 text-sm text-[#2f2f2f]"><div className="h-px flex-1 bg-black" /><span>or continue with</span><div className="h-px flex-1 bg-black" /></div>
-                <GoogleAuthButton onCredential={handleGoogleAuth} text="signup_with" />
+                <GoogleAuthButton onCredential={handleGoogleAuth} text={authMode === "login" ? "signin_with" : "signup_with"} />
               </form>
             </div>
 
@@ -356,61 +415,6 @@ export default function HomePage() {
           </section>
         </div>
 
-        {roleSelectionOpen && (
-          <div className="fixed inset-0 z-40 flex items-center justify-center bg-[rgba(38,34,33,0.22)] px-4 backdrop-blur-md">
-            <div className="w-full max-w-5xl rounded-[2.75rem] border border-white/50 bg-[#f5f0ed]/95 p-6 shadow-[0_30px_90px_rgba(63,54,50,0.2)] sm:p-8">
-              <div className="mb-6 text-center">
-                <p className="text-sm font-semibold uppercase tracking-[0.28em] text-[#9b8f88]">
-                  {pendingGoogleSignup ? "Google account ready" : "Email verified"}
-                </p>
-                <h2 className="mt-2 text-[clamp(1.8rem,2.8vw,2.8rem)] font-bold text-[#4a4545]">Choose your access</h2>
-                <p className="mt-2 text-base text-[#6a6464]">
-                  {pendingGoogleSignup
-                    ? `Continue with ${pendingGoogleSignup.email} as a developer workspace or unlock the admin plan.`
-                    : "Continue as a developer workspace or unlock the admin plan."}
-                </p>
-              </div>
-              <div className="grid gap-5 lg:grid-cols-2">
-                <div className="rounded-[2.25rem] bg-[#d8d3d3] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
-                  <div className="mb-4 inline-flex rounded-full bg-[#ece8e8] px-5 py-2 text-sm font-semibold uppercase tracking-[0.18em] text-[#5d5858]">Developer</div>
-                  <h3 className="text-3xl font-bold text-[#3f3b3b]">Build with your team</h3>
-                  <ul className="mt-5 space-y-2 text-sm text-[#494444]">
-                    <li className="flex items-start gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#2c7a4b]" /><span>{pendingGoogleSignup ? "Google email is carried into signup" : "Verified email is carried into signup"}</span></li>
-                  </ul>
-                  <Button
-                    type="button"
-                    onClick={pendingGoogleSignup ? completeGoogleDeveloperSignup : () => router.push(`/signup?email=${encodeURIComponent(email.trim())}&verificationToken=${encodeURIComponent(verifiedSignupToken)}`)}
-                    className="mt-6 h-auto rounded-full bg-[#1b7fe8] px-8 py-3 text-base font-medium text-white shadow-none hover:bg-[#166fd0]"
-                  >
-                    Continue as Developer
-                  </Button>
-                </div>
-                <div className="rounded-[2.25rem] bg-[#b9b2b2] p-6 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.28)]">
-                  <div className="mb-4 inline-flex rounded-full bg-white/20 px-5 py-2 text-sm font-semibold uppercase tracking-[0.18em] text-white">Admin plan</div>
-                  <h3 className="text-3xl font-bold">Admin access with payment</h3>
-                  <div className="mt-5 rounded-[1.75rem] bg-white/18 p-4">
-                    <p className="text-sm uppercase tracking-[0.18em] text-white/75">Plan amount</p>
-                    <p className="mt-2 text-4xl font-black">₹499</p>
-                  </div>
-                  <Button
-                    type="button"
-                    onClick={pendingGoogleSignup ? continueGoogleAdminSignup : () => router.push(`/signup/admin-payment?email=${encodeURIComponent(email.trim())}`)}
-                    className="mt-6 h-auto rounded-full bg-white px-8 py-3 text-base font-medium text-[#4d4747] shadow-none hover:bg-[#f1eded]"
-                  >
-                    Continue as Admin
-                  </Button>
-                </div>
-              </div>
-              {pendingGoogleSignup && (
-                <div className="mt-6 flex justify-center">
-                  <button type="button" className="text-sm text-[#666] underline-offset-4 hover:underline" onClick={() => setPendingGoogleSignup(null)}>
-                    Use a different Google account
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
       </div>
     </main>
   );

@@ -99,7 +99,7 @@
         "transform": "lodash/{{member}}"
       }
     },
-    "outputFileTracingRoot": "C:\\github_projects\\TaskSphere\\task_manager",
+    "outputFileTracingRoot": "C:\\github_projects\\Task_manager",
     "experimental": {
       "useSkewCookie": false,
       "cacheLife": {
@@ -289,7 +289,7 @@
     "bundlePagesRouterDependencies": false,
     "configFileName": "next.config.mjs",
     "turbopack": {
-      "root": "C:\\github_projects\\TaskSphere\\task_manager"
+      "root": "C:\\github_projects\\Task_manager"
     },
     "_originalRewrites": {
       "beforeFiles": [],
@@ -302,7 +302,7 @@
       "fallback": []
     }
   },
-  "appDir": "C:\\github_projects\\TaskSphere\\task_manager\\frontend",
+  "appDir": "C:\\github_projects\\Task_manager\\frontend",
   "relativeAppDir": "frontend",
   "files": [
     ".next\\routes-manifest.json",

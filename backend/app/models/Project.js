@@ -12,6 +12,11 @@ const projectSchema = new mongoose.Schema({
     trim: true,
     default: ''
   },
+  githubRepository: {
+    type: String,
+    trim: true,
+    default: ''
+  },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',

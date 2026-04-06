@@ -2,12 +2,13 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import type { User } from "./types";
-import { apiRequest, clearToken, getToken, setToken } from "./api";
+import { apiRequest, clearToken, getToken, setToken, ApiError } from "./api";
 
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  requestLoginOtp: (email: string) => Promise<void>;
+  verifyLoginOtp: (email: string, otp: string) => Promise<void>;
   authenticateWithGoogle: (credential: string) => Promise<void>;
   signup: (data: SignupData) => Promise<void>;
   requestSignupOtp: (email: string) => Promise<void>;
@@ -32,13 +33,17 @@ interface AdminSignupData extends SignupData {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const USER_KEY = "user";
+const SESSION_KEY = "auth-session";
 
 interface ApiUser {
+  _id?: string;
   id: string;
   name: string;
   email: string;
   role: "admin" | "developer";
   createdAt?: string;
+  avatar?: string;
 }
 
 const splitName = (name: string) => {
@@ -51,13 +56,56 @@ const splitName = (name: string) => {
 const mapApiUser = (user: ApiUser): User => {
   const { firstName, lastName } = splitName(user.name);
   return {
-    id: user.id,
+    id: user.id || user._id || "",
     email: user.email,
     firstName,
     lastName,
     role: user.role,
+    avatar: user.avatar,
     createdAt: user.createdAt || new Date().toISOString(),
   };
+};
+
+const getStoredUser = (): User | null => {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const raw = localStorage.getItem(USER_KEY);
+    return raw ? (JSON.parse(raw) as User) : null;
+  } catch {
+    return null;
+  }
+};
+
+const setStoredUser = (user: User): void => {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
+};
+
+const getStoredSession = (): { token?: string; user?: User } | null => {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    return raw ? (JSON.parse(raw) as { token?: string; user?: User }) : null;
+  } catch {
+    return null;
+  }
+};
+
+const setStoredSession = (token: string, user: User): void => {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(SESSION_KEY, JSON.stringify({ token, user }));
+};
+
+const clearStoredUser = (): void => {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(USER_KEY);
+};
+
+const clearStoredSession = (): void => {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(SESSION_KEY);
 };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -66,18 +114,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const bootstrap = async () => {
+      const storedSession = getStoredSession();
+      if (storedSession?.token && !getToken()) {
+        setToken(storedSession.token);
+      }
+
       const token = getToken();
       if (!token) {
+        clearStoredUser();
+        clearStoredSession();
         setIsLoading(false);
         return;
       }
 
+      const cachedUser = getStoredUser() || storedSession?.user || null;
+      if (cachedUser) {
+        setUser(cachedUser);
+      }
+
       try {
         const response = await apiRequest<{ user: ApiUser }>("/auth/profile");
-        setUser(mapApiUser(response.user));
-      } catch {
-        clearToken();
-        setUser(null);
+        const nextUser = mapApiUser(response.user);
+        setUser(nextUser);
+        setStoredUser(nextUser);
+        setStoredSession(token, nextUser);
+      } catch (error) {
+        if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+          clearToken();
+          clearStoredUser();
+          clearStoredSession();
+          setUser(null);
+        }
       } finally {
         setIsLoading(false);
       }
@@ -86,17 +153,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     bootstrap();
   }, []);
 
-  const login = async (email: string, password: string) => {
+  const requestLoginOtp = async (email: string) => {
+    await apiRequest<{ message: string }>("/auth/login/send-otp", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+      auth: false,
+    });
+  };
+
+  const verifyLoginOtp = async (email: string, otp: string) => {
     const response = await apiRequest<{ token: string; user: ApiUser }>(
-      "/auth/login",
+      "/auth/login/verify-otp",
       {
         method: "POST",
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, otp }),
         auth: false,
       }
     );
     setToken(response.token);
-    setUser(mapApiUser(response.user));
+    const nextUser = mapApiUser(response.user);
+    setUser(nextUser);
+    setStoredUser(nextUser);
+    setStoredSession(response.token, nextUser);
   };
 
   const authenticateWithGoogle = async (credential: string) => {
@@ -109,7 +187,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     );
     setToken(response.token);
-    setUser(mapApiUser(response.user));
+    const nextUser = mapApiUser(response.user);
+    setUser(nextUser);
+    setStoredUser(nextUser);
+    setStoredSession(response.token, nextUser);
   };
 
   const signup = async (data: SignupData) => {
@@ -127,7 +208,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     );
     setToken(response.token);
-    setUser(mapApiUser(response.user));
+    const nextUser = mapApiUser(response.user);
+    setUser(nextUser);
+    setStoredUser(nextUser);
+    setStoredSession(response.token, nextUser);
   };
 
   const requestSignupOtp = async (email: string) => {
@@ -166,7 +250,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     );
     setToken(response.token);
-    setUser(mapApiUser(response.user));
+    const nextUser = mapApiUser(response.user);
+    setUser(nextUser);
+    setStoredUser(nextUser);
+    setStoredSession(response.token, nextUser);
   };
 
   const completeVerifiedSignup = async (data: SignupData & { verificationToken: string }) => {
@@ -184,7 +271,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     );
     setToken(response.token);
-    setUser(mapApiUser(response.user));
+    const nextUser = mapApiUser(response.user);
+    setUser(nextUser);
+    setStoredUser(nextUser);
+    setStoredSession(response.token, nextUser);
   };
 
   const signupAdmin = async (data: AdminSignupData) => {
@@ -204,11 +294,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     );
     setToken(response.token);
-    setUser(mapApiUser(response.user));
+    const nextUser = mapApiUser(response.user);
+    setUser(nextUser);
+    setStoredUser(nextUser);
+    setStoredSession(response.token, nextUser);
   };
 
   const logout = () => {
     clearToken();
+    clearStoredUser();
+    clearStoredSession();
     setUser(null);
   };
 
@@ -231,7 +326,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         user,
         isLoading,
-        login,
+        requestLoginOtp,
+        verifyLoginOtp,
         authenticateWithGoogle,
         signup,
         requestSignupOtp,

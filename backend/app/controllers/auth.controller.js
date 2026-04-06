@@ -202,7 +202,7 @@ const verifyStoredOTP = (email, userOtp) => {
   return { valid: true };
 };
 
-const sendOTPEmail = async (email, otp) => {
+const sendOTPEmail = async (email, otp, purpose = 'signup') => {
   const senderEmail = process.env.BREVO_SENDER_EMAIL;
   const senderName = process.env.BREVO_SENDER_NAME || 'Tickzen';
 
@@ -215,11 +215,11 @@ const sendOTPEmail = async (email, otp) => {
   await tranEmailApi.sendTransacEmail({
     sender: { email: senderEmail, name: senderName },
     to: [{ email }],
-    subject: 'Your Tickzen OTP Code',
+    subject: `Your Tickzen OTP Code`,
     htmlContent: `
       <div style="font-family: Arial, sans-serif; color: #222;">
-        <h2 style="margin-bottom: 12px;">Verify your email</h2>
-        <p style="margin-bottom: 16px;">Use the OTP below to complete your Tickzen signup.</p>
+        <h2 style="margin-bottom: 12px;">${purpose === 'login' ? 'Sign in to Tickzen' : 'Verify your email'}</h2>
+        <p style="margin-bottom: 16px;">Use the OTP below to ${purpose === 'login' ? 'complete your Tickzen sign in.' : 'complete your Tickzen signup.'}</p>
         <div style="font-size: 32px; font-weight: 700; letter-spacing: 8px; margin: 20px 0;">${otp}</div>
         <p style="margin-top: 16px;">This code expires in 5 minutes.</p>
       </div>
@@ -286,12 +286,37 @@ export const sendSignupOtp = async (req, res) => {
     }
 
     const otp = generateOTP();
-    await sendOTPEmail(normalizedEmail, otp);
+    await sendOTPEmail(normalizedEmail, otp, 'signup');
     saveOTP(normalizedEmail, otp);
 
     res.json({ message: 'OTP sent successfully' });
   } catch (error) {
     console.error('Send signup OTP error:', error);
+    res.status(500).json({ message: 'Unable to send OTP', error: error.message });
+  }
+};
+
+export const sendLoginOtp = async (req, res) => {
+  try {
+    if (!ensureDatabaseConnection(res)) {
+      return;
+    }
+
+    const { email } = req.body;
+    const normalizedEmail = email.toLowerCase();
+
+    const existingUser = await User.findOne({ email: normalizedEmail });
+    if (!existingUser) {
+      return res.status(404).json({ message: 'No account found with this email' });
+    }
+
+    const otp = generateOTP();
+    await sendOTPEmail(normalizedEmail, otp, 'login');
+    saveOTP(normalizedEmail, otp);
+
+    res.json({ message: 'OTP sent successfully' });
+  } catch (error) {
+    console.error('Send login OTP error:', error);
     res.status(500).json({ message: 'Unable to send OTP', error: error.message });
   }
 };
@@ -390,7 +415,7 @@ export const verifySignupOtp = async (req, res) => {
     const user = new User({
       name,
       email: normalizedEmail,
-      password,
+      password: password || crypto.randomBytes(24).toString('hex'),
       role: 'developer',
     });
 
@@ -411,6 +436,45 @@ export const verifySignupOtp = async (req, res) => {
     });
   } catch (error) {
     console.error('Verify signup OTP error:', error);
+    res.status(500).json({ message: 'Unable to verify OTP', error: error.message });
+  }
+};
+
+export const verifyLoginOtp = async (req, res) => {
+  try {
+    if (!ensureDatabaseConnection(res)) {
+      return;
+    }
+
+    const { email, otp } = req.body;
+    const normalizedEmail = email.toLowerCase();
+
+    const user = await User.findOne({ email: normalizedEmail });
+    if (!user) {
+      return res.status(404).json({ message: 'No account found with this email' });
+    }
+
+    const otpResult = verifyStoredOTP(normalizedEmail, otp);
+    if (!otpResult.valid) {
+      return res.status(400).json({ message: otpResult.reason });
+    }
+
+    clearOTP(normalizedEmail);
+
+    const token = generateToken(user._id);
+
+    res.json({
+      message: 'Login successful',
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+    });
+  } catch (error) {
+    console.error('Verify login OTP error:', error);
     res.status(500).json({ message: 'Unable to verify OTP', error: error.message });
   }
 };

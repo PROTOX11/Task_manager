@@ -9,6 +9,8 @@
  */
 
 const TOKEN_KEY = "token";
+const SESSION_KEY = "auth-session";
+let memoryToken: string | null = null;
 
 /** SSR / Node fallback when env is not set — same port as backend default */
 const SERVER_FALLBACK_API = "http://localhost:5000/api";
@@ -26,17 +28,46 @@ function getApiBaseUrl(): string {
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem(TOKEN_KEY);
+
+  if (memoryToken) return memoryToken;
+
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (token) {
+    memoryToken = token;
+    return token;
+  }
+
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+
+    const session = JSON.parse(raw) as { token?: string };
+    return session.token || null;
+  } catch {
+    return null;
+  }
 }
 
 export function setToken(token: string): void {
   if (typeof window === "undefined") return;
+  memoryToken = token;
   localStorage.setItem(TOKEN_KEY, token);
 }
 
 export function clearToken(): void {
   if (typeof window === "undefined") return;
+  memoryToken = null;
   localStorage.removeItem(TOKEN_KEY);
+}
+
+export class ApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
 }
 
 export type ApiRequestOptions = Omit<RequestInit, "headers"> & {
@@ -47,13 +78,14 @@ export type ApiRequestOptions = Omit<RequestInit, "headers"> & {
 export async function apiRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
   const { auth = true, headers: customHeaders, ...init } = options;
   const token = getToken();
+  const isFormData = typeof FormData !== "undefined" && init.body instanceof FormData;
 
   const base = getApiBaseUrl();
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   const url = `${base}${normalizedPath}`;
 
   const headers = new Headers(customHeaders);
-  if (!headers.has("Content-Type")) {
+  if (!isFormData && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
   if (auth && token) {
@@ -72,10 +104,10 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
       typeof data === "object" &&
       data !== null &&
       "message" in data &&
-      typeof (data as { message: unknown }).message === "string"
+        typeof (data as { message: unknown }).message === "string"
         ? (data as { message: string }).message
         : "Request failed";
-    throw new Error(message);
+    throw new ApiError(message, response.status);
   }
 
   return data as T;

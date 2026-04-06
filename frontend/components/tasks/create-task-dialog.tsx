@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useData } from "@/lib/data-context";
+import { useAuth } from "@/lib/auth-context";
+import { apiRequest } from "@/lib/api";
 import {
   Dialog,
   DialogContent,
@@ -13,7 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Field, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import {
   Select,
   SelectContent,
@@ -24,6 +26,14 @@ import {
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import type { Task } from "@/lib/types";
+
+type DeveloperOption = {
+  id: string;
+  name: string;
+  email: string;
+};
+
+const UNASSIGNED_VALUE = "__unassigned__";
 
 interface CreateTaskDialogProps {
   projectId: string;
@@ -37,11 +47,54 @@ export function CreateTaskDialog({
   onClose,
 }: CreateTaskDialogProps) {
   const { createTask } = useData();
+  const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingDevelopers, setIsLoadingDevelopers] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState<Task["priority"]>("medium");
   const [dueDate, setDueDate] = useState("");
+  const [attachments, setAttachments] = useState<File[]>([]);
+  const [assigneeId, setAssigneeId] = useState("");
+  const [developers, setDevelopers] = useState<DeveloperOption[]>([]);
+
+  useEffect(() => {
+    if (!user || user.role !== "admin") {
+      setDevelopers([]);
+      return;
+    }
+
+    let isMounted = true;
+
+    const loadDevelopers = async () => {
+      try {
+        setIsLoadingDevelopers(true);
+        const response = await apiRequest<{ developers: Array<any> }>("/auth/developers");
+        if (!isMounted) return;
+
+        setDevelopers(
+          (response.developers || []).map((developer) => ({
+            id: (developer._id || developer.id).toString(),
+            name: developer.name,
+            email: developer.email,
+          }))
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unable to load developers";
+        toast.error(message);
+      } finally {
+        if (isMounted) {
+          setIsLoadingDevelopers(false);
+        }
+      }
+    };
+
+    void loadDevelopers();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,6 +110,8 @@ export function CreateTaskDialog({
         projectId,
         priority,
         dueDate: dueDate || undefined,
+        assigneeId: assigneeId || undefined,
+        attachments,
       });
       toast.success("Task created!");
       handleClose();
@@ -72,6 +127,8 @@ export function CreateTaskDialog({
     setDescription("");
     setPriority("medium");
     setDueDate("");
+    setAttachments([]);
+    setAssigneeId("");
     onClose();
   };
 
@@ -108,7 +165,7 @@ export function CreateTaskDialog({
               />
             </Field>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 md:grid-cols-2">
               <Field>
                 <FieldLabel htmlFor="priority">Priority</FieldLabel>
                 <Select value={priority} onValueChange={(v: Task["priority"]) => setPriority(v)}>
@@ -134,6 +191,52 @@ export function CreateTaskDialog({
                 />
               </Field>
             </div>
+
+            <Field>
+              <FieldLabel htmlFor="assignee">Assign Developer</FieldLabel>
+              <Select
+                value={assigneeId || UNASSIGNED_VALUE}
+                onValueChange={(value) =>
+                  setAssigneeId(value === UNASSIGNED_VALUE ? "" : value)
+                }
+                disabled={isLoadingDevelopers}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Choose the developer who will work on this task" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={UNASSIGNED_VALUE}>Unassigned</SelectItem>
+                  {developers.map((developer) => (
+                    <SelectItem key={developer.id} value={developer.id}>
+                      {developer.name} ({developer.email})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <FieldDescription>
+                The selected developer will receive a notification when this task is created.
+              </FieldDescription>
+            </Field>
+
+            <Field>
+              <FieldLabel htmlFor="attachments">Attachments</FieldLabel>
+              <Input
+                id="attachments"
+                type="file"
+                multiple
+                onChange={(e) => setAttachments(Array.from(e.target.files || []))}
+              />
+              <div className="mt-2 space-y-1 text-sm text-muted-foreground">
+                <p>You can attach multiple files of any type.</p>
+                {attachments.length > 0 && (
+                  <ul className="list-disc space-y-1 pl-5">
+                    {attachments.map((file) => (
+                      <li key={`${file.name}-${file.size}`}>{file.name}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </Field>
           </div>
 
           <DialogFooter className="mt-6">

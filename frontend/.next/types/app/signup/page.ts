@@ -1,4 +1,4 @@
-// File: C:\github_projects\TaskSphere\task_manager\frontend\app\signup\page.tsx
+// File: C:\github_projects\Task_manager\frontend\app\signup\page.tsx
 import * as entry from '../../../../app/signup/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

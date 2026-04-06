@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useAuth } from "@/lib/auth-context";
 import { useData } from "@/lib/data-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,12 +34,17 @@ interface KanbanBoardProps {
 }
 
 export function KanbanBoard({ project, onTaskClick, onAddTask }: KanbanBoardProps) {
+  const { user } = useAuth();
   const { addPanel, updatePanel, deletePanel, moveTask } = useData();
   const [addingPanel, setAddingPanel] = useState(false);
   const [newPanelName, setNewPanelName] = useState("");
   const [editingPanelId, setEditingPanelId] = useState<string | null>(null);
   const [editingPanelName, setEditingPanelName] = useState("");
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
+
+  const canModifyTask = (task: Task) => {
+    return Boolean(user && task);
+  };
 
   const handleAddPanel = async () => {
     if (!newPanelName.trim()) return;
@@ -71,8 +77,13 @@ export function KanbanBoard({ project, onTaskClick, onAddTask }: KanbanBoardProp
 
   const handleDrop = async (panelId: string) => {
     if (draggedTask && draggedTask.panelId !== panelId) {
-      await moveTask(draggedTask.id, panelId);
-      toast.success("Task moved");
+      try {
+        await moveTask(draggedTask.id, panelId);
+        toast.success("Task moved");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unable to move task";
+        toast.error(message);
+      }
     }
     setDraggedTask(null);
   };
@@ -114,6 +125,7 @@ export function KanbanBoard({ project, onTaskClick, onAddTask }: KanbanBoardProp
               onDragStart={handleDragStart}
               onDragOver={handleDragOver}
               onDrop={() => handleDrop(panel.id)}
+              canModifyTask={canModifyTask}
               getPriorityColor={getPriorityColor}
             />
           ))}
@@ -175,6 +187,7 @@ interface PanelColumnProps {
   onDragStart: (task: Task) => void;
   onDragOver: (e: React.DragEvent) => void;
   onDrop: () => void;
+  canModifyTask: (task: Task) => boolean;
   getPriorityColor: (priority: string) => string;
 }
 
@@ -192,6 +205,7 @@ function PanelColumn({
   onDragStart,
   onDragOver,
   onDrop,
+  canModifyTask,
   getPriorityColor,
 }: PanelColumnProps) {
   return (
@@ -248,6 +262,7 @@ function PanelColumn({
               task={task}
               onClick={() => onTaskClick(task)}
               onDragStart={() => onDragStart(task)}
+              canModifyTask={canModifyTask(task)}
               getPriorityColor={getPriorityColor}
             />
           ))}
@@ -268,19 +283,23 @@ interface TaskCardProps {
   task: Task;
   onClick: () => void;
   onDragStart: () => void;
+  canModifyTask: boolean;
   getPriorityColor: (priority: string) => string;
 }
 
-function TaskCard({ task, onClick, onDragStart, getPriorityColor }: TaskCardProps) {
+function TaskCard({ task, onClick, onDragStart, canModifyTask, getPriorityColor }: TaskCardProps) {
   const completedSubtasks = task.subtasks.filter((s) => s.completed).length;
   const isOverdue = task.dueDate && isPast(parseISO(task.dueDate)) && task.status !== "done";
+  const canDrag = canModifyTask;
 
   return (
     <Card
-      className={`cursor-pointer border-l-4 transition-shadow hover:shadow-md ${getPriorityColor(task.priority)}`}
+      className={`border-l-4 transition-shadow hover:shadow-md ${
+        canDrag ? "cursor-pointer" : "cursor-not-allowed opacity-80"
+      } ${getPriorityColor(task.priority)}`}
       onClick={onClick}
-      draggable
-      onDragStart={onDragStart}
+      draggable={canDrag}
+      onDragStart={canDrag ? onDragStart : undefined}
     >
       <CardContent className="p-3">
         <div className="flex items-start gap-2">

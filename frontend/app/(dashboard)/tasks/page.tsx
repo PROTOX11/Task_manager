@@ -1,41 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/lib/auth-context";
 import { useData } from "@/lib/data-context";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Search, Filter, CheckCircle2 } from "lucide-react";
+import { CheckCircle2, ArrowRight } from "lucide-react";
 import { format, isPast, parseISO } from "date-fns";
 import type { Task } from "@/lib/types";
 
 export default function TasksPage() {
   const { getMyTasks, updateTask, projects } = useData();
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [priorityFilter, setPriorityFilter] = useState<string>("all");
+  const { user } = useAuth();
+  const router = useRouter();
 
   const myTasks = getMyTasks();
-
-  const filteredTasks = myTasks.filter((task) => {
-    const matchesSearch = task.title
-      .toLowerCase()
-      .includes(searchQuery.toLowerCase());
-    const matchesStatus =
-      statusFilter === "all" || task.status === statusFilter;
-    const matchesPriority =
-      priorityFilter === "all" || task.priority === priorityFilter;
-    return matchesSearch && matchesStatus && matchesPriority;
-  });
+  const latestTasks = [...myTasks].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
 
   const getProjectName = (projectId: string) => {
     const project = projects.find((p) => p.id === projectId);
@@ -68,9 +52,20 @@ export default function TasksPage() {
     }
   };
 
+  const canModifyTask = (task: Task) => {
+    return Boolean(user && task);
+  };
+
   const toggleTaskStatus = async (task: Task) => {
+    if (!canModifyTask(task)) {
+      return;
+    }
     const newStatus = task.status === "done" ? "todo" : "done";
     await updateTask(task.id, { status: newStatus });
+  };
+
+  const openTask = (task: Task) => {
+    router.push(`/projects/${task.projectId}?task=${task.id}`);
   };
 
   return (
@@ -84,54 +79,21 @@ export default function TasksPage() {
 
       <Card>
         <CardHeader>
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <CardTitle>Task List</CardTitle>
+              <CardTitle>Latest Tasks</CardTitle>
               <CardDescription>
-                {filteredTasks.length} task{filteredTasks.length !== 1 && "s"}
+                Newest tasks appear first so you can focus on what changed most recently.
               </CardDescription>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search tasks..."
-                  className="pl-8 w-[200px]"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-              </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[130px]">
-                  <Filter className="mr-2 h-4 w-4" />
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="todo">To Do</SelectItem>
-                  <SelectItem value="in_progress">In Progress</SelectItem>
-                  <SelectItem value="review">Review</SelectItem>
-                  <SelectItem value="done">Done</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-                <SelectTrigger className="w-[130px]">
-                  <SelectValue placeholder="Priority" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Priority</SelectItem>
-                  <SelectItem value="urgent">Urgent</SelectItem>
-                  <SelectItem value="high">High</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="low">Low</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <p className="text-sm text-muted-foreground">
+              {latestTasks.length} task{latestTasks.length !== 1 && "s"}
+            </p>
           </div>
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
-            {filteredTasks.map((task) => (
+            {latestTasks.map((task) => (
               <div
                 key={task.id}
                 className={`flex items-center gap-4 rounded-lg border p-4 transition-colors hover:bg-muted/50 ${
@@ -140,6 +102,7 @@ export default function TasksPage() {
               >
                 <Checkbox
                   checked={task.status === "done"}
+                  disabled={!canModifyTask(task)}
                   onCheckedChange={() => toggleTaskStatus(task)}
                 />
                 <div
@@ -186,17 +149,17 @@ export default function TasksPage() {
                 <Badge variant="outline" className="capitalize">
                   {task.priority}
                 </Badge>
+                <Button variant="ghost" size="sm" onClick={() => openTask(task)}>
+                  Open
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
               </div>
             ))}
-            {filteredTasks.length === 0 && (
+            {latestTasks.length === 0 && (
               <div className="py-12 text-center text-muted-foreground">
                 <CheckCircle2 className="mx-auto mb-3 h-12 w-12" />
                 <p className="text-lg font-medium">No tasks found</p>
-                <p className="mt-1">
-                  {searchQuery || statusFilter !== "all" || priorityFilter !== "all"
-                    ? "Try adjusting your filters"
-                    : "You don't have any tasks assigned yet"}
-                </p>
+                <p className="mt-1">You don&apos;t have any tasks assigned yet</p>
               </div>
             )}
           </div>

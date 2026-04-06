@@ -196,6 +196,29 @@ function AdminPaymentPageContent() {
             });
 
             setToken(verifiedSignup.token);
+            localStorage.setItem(
+              "auth-session",
+              JSON.stringify({
+                token: verifiedSignup.token,
+                user: {
+                  id: verifiedSignup.user.id,
+                  email: verifiedSignup.user.email,
+                  firstName: verifiedSignup.user.name.split(" ")[0] || "User",
+                  lastName: verifiedSignup.user.name.split(" ").slice(1).join(" "),
+                  role: verifiedSignup.user.role,
+                },
+              })
+            );
+            localStorage.setItem(
+              "user",
+              JSON.stringify({
+                id: verifiedSignup.user.id,
+                email: verifiedSignup.user.email,
+                firstName: verifiedSignup.user.name.split(" ")[0] || "User",
+                lastName: verifiedSignup.user.name.split(" ").slice(1).join(" "),
+                role: verifiedSignup.user.role,
+              })
+            );
             sessionStorage.removeItem(ADMIN_SIGNUP_STORAGE_KEY);
             toast.success("Payment complete. Your admin account is ready.");
             router.push("/dashboard");

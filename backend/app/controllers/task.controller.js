@@ -1,11 +1,165 @@
 import Task from '../models/Task.js';
 import Project from '../models/Project.js';
+import Notification from '../models/Notification.js';
+import User from '../models/User.js';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+const mapUploadedFile = (file) => ({
+  filename: file.filename,
+  originalName: file.originalname,
+  path: file.path,
+  mimetype: file.mimetype,
+  size: file.size,
+  uploadedAt: new Date(),
+});
+
+const getTaskAttachments = (task) => {
+  if (Array.isArray(task.attachments) && task.attachments.length > 0) {
+    return task.attachments;
+  }
+
+  if (task.attachmentFile && task.attachmentFile.path) {
+    return [task.attachmentFile];
+  }
+
+  return [];
+};
+
+const deleteStoredFiles = (attachments = []) => {
+  attachments.forEach((attachment) => {
+    if (attachment?.path && fs.existsSync(attachment.path)) {
+      fs.unlinkSync(attachment.path);
+    }
+  });
+};
+
+const mapCommentAuthor = (author, fallbackUser) => ({
+  _id: author?._id || fallbackUser?._id || fallbackUser?.id,
+  name: author?.name || fallbackUser?.name || `${fallbackUser?.firstName || 'User'} ${fallbackUser?.lastName || ''}`.trim(),
+  email: author?.email || fallbackUser?.email || '',
+  role: author?.role || fallbackUser?.role || 'developer'
+});
+
+const normalizeTaskStatus = (status) => {
+  if (status === 'in_progress') return 'in-progress';
+  if (status === 'done') return 'completed';
+  if (status === 'todo') return 'pending';
+  return status;
+};
+
+const formatDateForNotification = (date) => {
+  if (!date) return 'No due date';
+  return new Date(date).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  });
+};
+
+const normalizeMentionKey = (value = '') =>
+  value
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/^@+/, '')
+    .replace(/[^a-z0-9._-]+/g, '');
+
+const getUserMentionKeys = (user) => {
+  const name = (user?.name || '').trim().toLowerCase();
+  const [firstName = '', ...rest] = name.split(/\s+/);
+  const lastName = rest.join(' ');
+  const emailLocalPart = (user?.email || '').toLowerCase().split('@')[0] || '';
+
+  return new Set([
+    normalizeMentionKey(user?.name || ''),
+    normalizeMentionKey(emailLocalPart),
+    normalizeMentionKey(firstName),
+    normalizeMentionKey(lastName),
+    normalizeMentionKey(`${firstName}.${lastName}`),
+    normalizeMentionKey(`${firstName}_${lastName}`),
+    normalizeMentionKey(`${firstName}-${lastName}`),
+  ].filter(Boolean));
+};
+
+const extractMentionTokens = (content = '') =>
+  Array.from(content.matchAll(/@([a-zA-Z0-9._-]+)/g), (match) => normalizeMentionKey(match[1]))
+    .filter(Boolean);
+
+const createMentionNotifications = async ({ task, sender, content }) => {
+  if (!task?.assignedDeveloper || !sender || !content) return;
+
+  const mentionTokens = extractMentionTokens(content);
+  if (mentionTokens.length === 0) return;
+
+  const users = await User.find({ role: { $in: ['admin', 'developer'] } }).select('name email role');
+  const tokenSet = new Set(mentionTokens);
+  const mentionedUsers = users.filter((candidate) => {
+    if (!candidate?._id) return false;
+    if (candidate._id.toString() === sender._id?.toString()) return false;
+
+    const keys = getUserMentionKeys(candidate);
+    for (const token of tokenSet) {
+      if (keys.has(token)) return true;
+    }
+    return false;
+  });
+
+  if (mentionedUsers.length === 0) return;
+
+  const notifications = mentionedUsers.map((mentionedUser) => ({
+    userId: mentionedUser._id,
+    senderId: sender._id,
+    taskId: task._id,
+    projectId: task.projectId,
+    type: 'comment_mentioned',
+    title: 'You were mentioned in a comment',
+    message: `${sender.name || 'A teammate'} mentioned you on "${task.title}".`,
+    read: false
+  }));
+
+  await Notification.insertMany(notifications);
+};
+
+const createDueDateNotification = async ({ task, sender, previousDeadline, nextDeadline }) => {
+  if (!task.assignedDeveloper || !sender) return;
+  if (!previousDeadline && !nextDeadline) return;
+
+  const previousValue = previousDeadline ? new Date(previousDeadline).toISOString() : null;
+  const nextValue = nextDeadline ? new Date(nextDeadline).toISOString() : null;
+
+  if (previousValue === nextValue) return;
+
+  await Notification.create({
+    userId: task.assignedDeveloper,
+    senderId: sender._id,
+    taskId: task._id,
+    projectId: task.projectId,
+    type: 'due_date_updated',
+    title: 'Task due date updated',
+    message: `${task.title} due date changed to ${formatDateForNotification(nextDeadline)}.`,
+    read: false
+  });
+};
+
+const createTaskAssignedNotification = async ({ task, sender }) => {
+  if (!task.assignedDeveloper || !sender) return;
+
+  await Notification.create({
+    userId: task.assignedDeveloper,
+    senderId: sender._id,
+    taskId: task._id,
+    projectId: task.projectId,
+    type: 'task_assigned',
+    title: 'New task assigned to you',
+    message: `You were assigned to "${task.title}".`,
+    read: false
+  });
+};
 
 // Get tasks by project
 export const getTasksByProject = async (req, res) => {
@@ -64,6 +218,7 @@ export const getTaskById = async (req, res) => {
 export const createTask = async (req, res) => {
   try {
     const { title, description, projectId, panelId, assignedDeveloper, priority, deadline } = req.body;
+    const uploadedFiles = Array.isArray(req.files) ? req.files : req.file ? [req.file] : [];
 
     // Check if project exists
     const project = await Project.findById(projectId);
@@ -79,21 +234,21 @@ export const createTask = async (req, res) => {
       assignedDeveloper,
       createdBy: req.userId,
       priority: priority || 'medium',
-      deadline: deadline ? new Date(deadline) : undefined
+      deadline: deadline ? new Date(deadline) : undefined,
+      attachments: uploadedFiles.map(mapUploadedFile),
+      comments: [],
     });
 
-    // Handle file attachment
-    if (req.file) {
-      task.attachmentFile = {
-        filename: req.file.filename,
-        originalName: req.file.originalname,
-        path: req.file.path,
-        mimetype: req.file.mimetype,
-        size: req.file.size
-      };
+    if (task.attachments.length > 0) {
+      task.attachmentFile = task.attachments[0];
     }
 
     await task.save();
+
+    await createTaskAssignedNotification({
+      task,
+      sender: req.user
+    });
 
     // Update project task count
     project.totalTasks += 1;
@@ -118,40 +273,42 @@ export const updateTask = async (req, res) => {
   try {
     const { id } = req.params;
     const { title, description, assignedDeveloper, priority, deadline, status, panelId } = req.body;
+    const uploadedFiles = Array.isArray(req.files) ? req.files : req.file ? [req.file] : [];
 
     const task = await Task.findById(id);
     if (!task) {
       return res.status(404).json({ message: 'Task not found' });
     }
 
+    const previousDeadline = task.deadline ? task.deadline.toISOString() : null;
+    const nextDeadline = deadline !== undefined ? (deadline ? new Date(deadline).toISOString() : null) : previousDeadline;
+
     if (title) task.title = title;
     if (description !== undefined) task.description = description;
     if (assignedDeveloper) task.assignedDeveloper = assignedDeveloper;
     if (priority) task.priority = priority;
-    if (deadline) task.deadline = new Date(deadline);
+    const deadlineChanged = deadline !== undefined && new Date(deadline).toISOString() !== (task.deadline ? task.deadline.toISOString() : null);
+    if (deadline !== undefined) task.deadline = deadline ? new Date(deadline) : undefined;
     if (status) task.status = status;
     if (panelId) task.panelId = panelId;
 
     // Handle new file attachment
-    if (req.file) {
-      // Delete old file if exists
-      if (task.attachmentFile && task.attachmentFile.path) {
-        const oldPath = task.attachmentFile.path;
-        if (fs.existsSync(oldPath)) {
-          fs.unlinkSync(oldPath);
-        }
-      }
-
-      task.attachmentFile = {
-        filename: req.file.filename,
-        originalName: req.file.originalname,
-        path: req.file.path,
-        mimetype: req.file.mimetype,
-        size: req.file.size
-      };
+    if (uploadedFiles.length > 0) {
+      deleteStoredFiles(getTaskAttachments(task));
+      task.attachments = uploadedFiles.map(mapUploadedFile);
+      task.attachmentFile = task.attachments[0];
     }
 
     await task.save();
+
+    if (deadlineChanged && req.user.role === 'admin') {
+      await createDueDateNotification({
+        task,
+        sender: req.user,
+        previousDeadline,
+        nextDeadline
+      });
+    }
 
     const updatedTask = await Task.findById(id)
       .populate('assignedDeveloper', 'name email')
@@ -164,6 +321,51 @@ export const updateTask = async (req, res) => {
   } catch (error) {
     console.error('Update task error:', error);
     res.status(500).json({ message: 'Error updating task', error: error.message });
+  }
+};
+
+// Add comment to task
+export const addTaskComment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { content } = req.body;
+
+    if (!content || !content.trim()) {
+      return res.status(400).json({ message: 'Comment content is required' });
+    }
+
+    const task = await Task.findById(id);
+    if (!task) {
+      return res.status(404).json({ message: 'Task not found' });
+    }
+
+    task.comments = task.comments || [];
+    task.comments.push({
+      content: content.trim(),
+      author: mapCommentAuthor(req.user, req.user),
+      createdAt: new Date(),
+      updatedAt: new Date()
+    });
+
+    await task.save();
+
+    await createMentionNotifications({
+      task,
+      sender: req.user,
+      content
+    });
+
+    const updatedTask = await Task.findById(id)
+      .populate('assignedDeveloper', 'name email')
+      .populate('createdBy', 'name email');
+
+    res.status(201).json({
+      message: 'Comment added successfully',
+      task: updatedTask
+    });
+  } catch (error) {
+    console.error('Add task comment error:', error);
+    res.status(500).json({ message: 'Error adding comment', error: error.message });
   }
 };
 
@@ -286,11 +488,7 @@ export const deleteTask = async (req, res) => {
     }
 
     // Delete attachment file if exists
-    if (task.attachmentFile && task.attachmentFile.path) {
-      if (fs.existsSync(task.attachmentFile.path)) {
-        fs.unlinkSync(task.attachmentFile.path);
-      }
-    }
+    deleteStoredFiles(getTaskAttachments(task));
 
     // Update project task count
     const project = await Project.findById(task.projectId);
@@ -321,16 +519,19 @@ export const downloadAttachment = async (req, res) => {
       return res.status(404).json({ message: 'Task not found' });
     }
 
-    if (!task.attachmentFile || !task.attachmentFile.path) {
+    const attachments = getTaskAttachments(task);
+
+    if (attachments.length === 0) {
       return res.status(404).json({ message: 'No attachment found for this task' });
     }
 
-    const filePath = task.attachmentFile.path;
+    const attachment = attachments[0];
+    const filePath = attachment.path;
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ message: 'File not found on server' });
     }
 
-    res.download(filePath, task.attachmentFile.originalName);
+    res.download(filePath, attachment.originalName);
   } catch (error) {
     console.error('Download attachment error:', error);
     res.status(500).json({ message: 'Error downloading attachment', error: error.message });
@@ -341,19 +542,22 @@ export const downloadAttachment = async (req, res) => {
 export const updateTaskStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status } = req.body;
+    const { status, panelId } = req.body;
 
     const task = await Task.findById(id);
     if (!task) {
       return res.status(404).json({ message: 'Task not found' });
     }
 
-    // Developers can only update status of their assigned tasks
-    if (req.user.role === 'developer' && task.assignedDeveloper?.toString() !== req.userId.toString()) {
-      return res.status(403).json({ message: 'Not authorized to update this task' });
+    if (!status) {
+      return res.status(400).json({ message: 'Status is required' });
     }
 
-    task.status = status;
+    const normalizedStatus = normalizeTaskStatus(status);
+    task.status = normalizedStatus;
+    if (panelId) {
+      task.panelId = panelId;
+    }
     await task.save();
 
     const updatedTask = await Task.findById(id)

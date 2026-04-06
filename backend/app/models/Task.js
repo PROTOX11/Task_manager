@@ -46,6 +46,52 @@ const taskSchema = new mongoose.Schema({
     mimetype: String,
     size: Number
   },
+  attachments: [{
+    filename: String,
+    originalName: String,
+    path: String,
+    mimetype: String,
+    size: Number,
+    uploadedAt: {
+      type: Date,
+      default: Date.now
+    }
+  }],
+  comments: [{
+    content: {
+      type: String,
+      required: true,
+      trim: true
+    },
+    author: {
+      _id: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: true
+      },
+      name: {
+        type: String,
+        required: true
+      },
+      email: {
+        type: String,
+        required: true
+      },
+      role: {
+        type: String,
+        enum: ['admin', 'developer'],
+        required: true
+      }
+    },
+    createdAt: {
+      type: Date,
+      default: Date.now
+    },
+    updatedAt: {
+      type: Date,
+      default: Date.now
+    }
+  }],
   deadline: {
     type: Date
   },

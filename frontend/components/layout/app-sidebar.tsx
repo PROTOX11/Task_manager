@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { useData } from "@/lib/data-context";
+import { Badge } from "@/components/ui/badge";
 import {
   Sidebar,
   SidebarContent,
@@ -41,6 +42,7 @@ import {
 const mainNavItems = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { title: "My Tasks", href: "/tasks", icon: ListTodo },
+  { title: "Notifications", href: "/notifications", icon: Bell },
   { title: "Invitations", href: "/invitations", icon: Bell },
 ];
 
@@ -52,7 +54,8 @@ const adminNavItems = [
 export function AppSidebar() {
   const pathname = usePathname();
   const { user, logout } = useAuth();
-  const { projects } = useData();
+  const { projects, notifications } = useData();
+  const unreadNotifications = notifications.filter((notification) => !notification.read).length;
 
   const getInitials = (firstName: string, lastName: string) => {
     return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
@@ -74,16 +77,21 @@ export function AppSidebar() {
           <SidebarGroupLabel>Navigation</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {mainNavItems.map((item) => (
-                <SidebarMenuItem key={item.href}>
-                  <SidebarMenuButton asChild isActive={pathname === item.href}>
-                    <Link href={item.href}>
-                      <item.icon className="h-4 w-4" />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+                {mainNavItems.map((item) => (
+                  <SidebarMenuItem key={item.href}>
+                    <SidebarMenuButton asChild isActive={pathname === item.href}>
+                      <Link href={item.href}>
+                        <item.icon className="h-4 w-4" />
+                        <span className="flex-1">{item.title}</span>
+                        {item.title === "Notifications" && unreadNotifications > 0 && (
+                          <Badge variant="secondary" className="ml-auto">
+                            {unreadNotifications}
+                          </Badge>
+                        )}
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -91,11 +99,13 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupLabel className="flex items-center justify-between">
             <span>Projects</span>
-            <Link href="/projects/new">
-              <Button variant="ghost" size="icon" className="h-5 w-5">
-                <Plus className="h-3 w-3" />
-              </Button>
-            </Link>
+            {user?.role === "admin" && (
+              <Link href="/projects/new">
+                <Button variant="ghost" size="icon" className="h-5 w-5">
+                  <Plus className="h-3 w-3" />
+                </Button>
+              </Link>
+            )}
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
