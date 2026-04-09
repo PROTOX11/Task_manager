@@ -1,85 +1,19 @@
 import Project from '../models/Project.js';
-import User from '../models/User.js';
 import ProjectChatMessage from '../models/ProjectChatMessage.js';
 import ProjectMeeting from '../models/ProjectMeeting.js';
-import Notification from '../models/Notification.js';
-
-const typingState = new Map();
-
-const populateProjectMembers = (query) =>
-  query
-    .populate('developers', 'name email role')
-    .populate('createdBy', 'name email role');
-
-const hasProjectAccess = (project, user) => {
-  if (!project || !user) return false;
-  const projectOwnerId = project.createdBy?._id?.toString?.() || project.createdBy?.toString?.();
-  const userId = user._id?.toString?.() || user.id?.toString?.();
-
-  if (user.role === 'admin' && projectOwnerId === userId) {
-    return true;
-  }
-
-  return Array.isArray(project.developers) &&
-    project.developers.some((dev) => (dev?._id?.toString?.() || dev?.toString?.()) === userId);
-};
-
-const buildConversationFilter = (projectId, userId, conversationWith) => {
-  if (!conversationWith) {
-    return {
-      projectId,
-      recipientId: null
-    };
-  }
-
-  return {
-    projectId,
-    $or: [
-      { senderId: userId, recipientId: conversationWith },
-      { senderId: conversationWith, recipientId: userId }
-    ]
-  };
-};
-
-const formatMember = (member) => ({
-  id: member._id.toString(),
-  name: member.name,
-  email: member.email,
-  role: member.role
-});
-
-const getConversationKey = (projectId, recipientId) => `${projectId}:${recipientId || 'public'}`;
-
-const pruneTypingState = () => {
-  const now = Date.now();
-  for (const [key, value] of typingState.entries()) {
-    const active = Array.from(value.entries()).filter(([, expiresAt]) => expiresAt > now);
-    if (active.length === 0) {
-      typingState.delete(key);
-      continue;
-    }
-    typingState.set(key, new Map(active));
-  }
-};
-
-const setTypingState = ({ projectId, senderId, senderName, recipientId }) => {
-  pruneTypingState();
-  const key = getConversationKey(projectId, recipientId);
-  const conversation = typingState.get(key) || new Map();
-  conversation.set(senderId.toString(), {
-    senderId: senderId.toString(),
-    senderName,
-    expiresAt: Date.now() + 4000
-  });
-  typingState.set(key, conversation);
-};
-
-const getTypingParticipants = ({ projectId, recipientId, viewerId }) => {
-  pruneTypingState();
-  const key = getConversationKey(projectId, recipientId);
-  const conversation = typingState.get(key) || new Map();
-  return Array.from(conversation.values()).filter((participant) => participant.senderId !== viewerId);
-};
+import {
+  buildConversationFilter,
+  createAndBroadcastProjectChatMessage,
+  formatMember,
+  getChatRoomKey,
+  getTypingParticipants,
+  hasProjectAccess,
+  parseChatToken,
+  populateProjectMembers,
+  setTypingState,
+  subscribeHttpRoom,
+  unsubscribeHttpRoom
+} from '../services/project-chat.service.js';
 
 export const getProjectChatMessages = async (req, res) => {
   try {
@@ -112,6 +46,64 @@ export const getProjectChatMessages = async (req, res) => {
   } catch (error) {
     console.error('Get project chat messages error:', error);
     res.status(500).json({ message: 'Error fetching chat messages', error: error.message });
+  }
+};
+
+export const streamProjectChat = async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const conversationWith = req.query.conversationWith?.toString() || 'public';
+    const token = req.query.token?.toString() || '';
+    const user = await parseChatToken(token);
+
+    if (!user) {
+      return res.status(401).json({ message: 'Invalid or missing token' });
+    }
+
+    const project = await populateProjectMembers(Project.findById(projectId));
+    if (!project) {
+      return res.status(404).json({ message: 'Project not found' });
+    }
+
+    if (!hasProjectAccess(project, user)) {
+      return res.status(403).json({ message: 'Not authorized to view this project' });
+    }
+
+    const roomKey = getChatRoomKey({
+      projectId,
+      conversationWith,
+      userId: user._id.toString()
+    });
+
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no'
+    });
+
+    res.write(`event: ready\ndata: ${JSON.stringify({ roomKey })}\n\n`);
+    subscribeHttpRoom(roomKey, res);
+
+    const heartbeat = setInterval(() => {
+      try {
+        res.write('event: ping\ndata: {}\n\n');
+      } catch {
+        clearInterval(heartbeat);
+      }
+    }, 25000);
+
+    req.on('close', () => {
+      clearInterval(heartbeat);
+      unsubscribeHttpRoom(roomKey, res);
+    });
+  } catch (error) {
+    console.error('Stream project chat error:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ message: 'Error starting chat stream', error: error.message });
+    } else {
+      res.end();
+    }
   }
 };
 
@@ -173,61 +165,27 @@ export const setProjectTypingStatus = async (req, res) => {
 export const sendProjectChatMessage = async (req, res) => {
   try {
     const { projectId } = req.params;
-    const { content, recipientId } = req.body;
+    const { content, recipientId, mentionedUserIds } = req.body;
 
     if (!content || !content.trim()) {
       return res.status(400).json({ message: 'Message content is required' });
     }
 
-    const project = await populateProjectMembers(Project.findById(projectId));
-    if (!project) {
-      return res.status(404).json({ message: 'Project not found' });
-    }
-
-    if (!hasProjectAccess(project, req.user)) {
-      return res.status(403).json({ message: 'Not authorized to chat in this project' });
-    }
-
-    let recipient = null;
-    if (recipientId) {
-      recipient = await User.findById(recipientId).select('name email role');
-      if (!recipient) {
-        return res.status(404).json({ message: 'Recipient not found' });
-      }
-    }
-
-    const message = new ProjectChatMessage({
+    const result = await createAndBroadcastProjectChatMessage({
       projectId,
-      senderId: req.userId,
-      recipientId: recipient?._id || null,
-      content: content.trim()
+      content,
+      recipientId: recipientId || null,
+      user: req.user,
+      mentionedUserIds: Array.isArray(mentionedUserIds) ? mentionedUserIds : []
     });
-
-    await message.save();
-
-    if (recipient) {
-      await Notification.create({
-        userId: recipient._id,
-        senderId: req.userId,
-        projectId,
-        type: 'project_chat_dm',
-        title: 'New private message',
-        message: `${req.user.name || 'A teammate'} sent you a private message in ${project.name}.`,
-        read: false
-      });
-    }
-
-    const populatedMessage = await ProjectChatMessage.findById(message._id)
-      .populate('senderId', 'name email role')
-      .populate('recipientId', 'name email role');
 
     res.status(201).json({
       message: 'Chat message sent successfully',
-      chatMessage: populatedMessage
+      chatMessage: result.message
     });
   } catch (error) {
     console.error('Send project chat message error:', error);
-    res.status(500).json({ message: 'Error sending chat message', error: error.message });
+    res.status(error.statusCode || 500).json({ message: 'Error sending chat message', error: error.message });
   }
 };
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useData } from "@/lib/data-context";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,9 +19,12 @@ import {
 } from "lucide-react";
 import { format, isPast, parseISO } from "date-fns";
 
+type DashboardFilter = "all" | "active-projects" | "my-tasks" | "completed" | "pending" | "overdue";
+
 export default function DashboardPage() {
   const { user } = useAuth();
   const { projects, getMyTasks } = useData();
+  const [selectedFilter, setSelectedFilter] = useState<DashboardFilter>("all");
 
   const myTasks = getMyTasks();
   const completedTasks = myTasks.filter((t) => t.status === "done").length;
@@ -30,6 +34,48 @@ export default function DashboardPage() {
   ).length;
 
   const activeProjects = projects.filter((p) => p.status === "active").length;
+
+  const filteredProjects = useMemo(() => {
+    if (selectedFilter === "active-projects") {
+      return projects.filter((project) => project.status === "active");
+    }
+    return projects;
+  }, [projects, selectedFilter]);
+
+  const filteredTasks = useMemo(() => {
+    switch (selectedFilter) {
+      case "completed":
+        return myTasks.filter((task) => task.status === "done");
+      case "pending":
+        return myTasks.filter((task) => task.status !== "done");
+      case "overdue":
+        return myTasks.filter(
+          (task) => task.dueDate && isPast(parseISO(task.dueDate)) && task.status !== "done"
+        );
+      case "my-tasks":
+      case "all":
+      case "active-projects":
+      default:
+        return myTasks;
+    }
+  }, [myTasks, selectedFilter]);
+
+  const filterLabel = useMemo(() => {
+    switch (selectedFilter) {
+      case "active-projects":
+        return "Active projects";
+      case "my-tasks":
+        return "My tasks";
+      case "completed":
+        return "Completed tasks";
+      case "pending":
+        return "Pending tasks";
+      case "overdue":
+        return "Overdue tasks";
+      default:
+        return "All projects and tasks";
+    }
+  }, [selectedFilter]);
 
   const stats = [
     {
@@ -115,7 +161,43 @@ export default function DashboardPage() {
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         {stats.map((stat) => (
-          <Card key={stat.title}>
+          <Card
+            key={stat.title}
+            role="button"
+            tabIndex={0}
+            aria-pressed={
+              (stat.title === "Active Projects" && selectedFilter === "active-projects") ||
+              (stat.title === "My Tasks" && selectedFilter === "my-tasks") ||
+              (stat.title === "Completed" && selectedFilter === "completed") ||
+              (stat.title === "Pending" && selectedFilter === "pending") ||
+              (stat.title === "Overdue" && selectedFilter === "overdue") ||
+              (stat.title === "Total Projects" && selectedFilter === "all")
+            }
+            onClick={() => {
+              if (stat.title === "Total Projects") setSelectedFilter("all");
+              if (stat.title === "Active Projects") setSelectedFilter("active-projects");
+              if (stat.title === "My Tasks") setSelectedFilter("my-tasks");
+              if (stat.title === "Completed") setSelectedFilter("completed");
+              if (stat.title === "Pending") setSelectedFilter("pending");
+              if (stat.title === "Overdue") setSelectedFilter("overdue");
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                (event.currentTarget as HTMLDivElement).click();
+              }
+            }}
+            className={`cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md ${
+              (stat.title === "Active Projects" && selectedFilter === "active-projects") ||
+              (stat.title === "My Tasks" && selectedFilter === "my-tasks") ||
+              (stat.title === "Completed" && selectedFilter === "completed") ||
+              (stat.title === "Pending" && selectedFilter === "pending") ||
+              (stat.title === "Overdue" && selectedFilter === "overdue") ||
+              (stat.title === "Total Projects" && selectedFilter === "all")
+                ? "ring-2 ring-primary/40"
+                : ""
+            }`}
+          >
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
                 <div className={`rounded-lg p-2 ${stat.bgColor}`}>
@@ -138,14 +220,22 @@ export default function DashboardPage() {
               <CardTitle>Recent Projects</CardTitle>
               <CardDescription>Your active projects and progress</CardDescription>
             </div>
-            <Link href="/projects/new">
+            <div className="flex items-center gap-2">
+              <Badge variant="outline">{filterLabel}</Badge>
+              {selectedFilter !== "all" && (
+                <Button variant="ghost" size="sm" onClick={() => setSelectedFilter("all")}>
+                  Clear
+                </Button>
+              )}
+            </div>
+            <Link href="/admin/projects">
               <Button variant="outline" size="sm">
                 View All
               </Button>
             </Link>
           </CardHeader>
           <CardContent className="space-y-4">
-            {projects.slice(0, 4).map((project) => {
+            {filteredProjects.slice(0, 4).map((project) => {
               const totalTasks = project.panels.reduce(
                 (sum, panel) => sum + panel.tasks.length,
                 0
@@ -183,10 +273,10 @@ export default function DashboardPage() {
                 </Link>
               );
             })}
-            {projects.length === 0 && (
+            {filteredProjects.length === 0 && (
               <div className="py-8 text-center text-muted-foreground">
                 <FolderKanban className="mx-auto mb-2 h-8 w-8" />
-                <p>No projects yet. Create your first project!</p>
+                <p>No projects match the current filter.</p>
               </div>
             )}
           </CardContent>
@@ -205,7 +295,11 @@ export default function DashboardPage() {
             </Link>
           </CardHeader>
           <CardContent className="space-y-3">
-            {recentTasks.map((task) => (
+            {filteredTasks
+              .filter((task) => task.status !== "done" || selectedFilter === "completed")
+              .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+              .slice(0, 5)
+              .map((task) => (
               <div
                 key={task.id}
                 className="flex items-center gap-3 rounded-lg border p-3"
@@ -236,7 +330,7 @@ export default function DashboardPage() {
                 </Badge>
               </div>
             ))}
-            {recentTasks.length === 0 && (
+            {filteredTasks.length === 0 && (
               <div className="py-8 text-center text-muted-foreground">
                 <CheckCircle2 className="mx-auto mb-2 h-8 w-8" />
                 <p>No pending tasks. You&apos;re all caught up!</p>

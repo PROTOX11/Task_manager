@@ -1,9 +1,11 @@
 import express from 'express';
 import cors from 'cors';
 import mongoose from 'mongoose';
+import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
+import { Server as SocketIOServer } from 'socket.io';
 import authRoutes from './app/routes/auth.routes.js';
 import projectRoutes from './app/routes/project.routes.js';
 import projectCollaborationRoutes from './app/routes/project.collaboration.routes.js';
@@ -11,6 +13,19 @@ import taskRoutes from './app/routes/task.routes.js';
 import panelRoutes from './app/routes/panel.routes.js';
 import requestRoutes from './app/routes/request.routes.js';
 import notificationRoutes from './app/routes/notification.routes.js';
+import zentrixaRoutes from './app/routes/zentrixa.routes.js';
+import Project from './app/models/Project.js';
+import {
+  createAndBroadcastProjectChatMessage,
+  getChatRoomKey,
+  hasProjectAccess,
+  parseChatToken,
+  populateProjectMembers,
+  setTypingState,
+  subscribeSocketRoom,
+  unsubscribeSocketRoom
+} from './app/services/project-chat.service.js';
+import { setRealtimeServer } from './app/services/realtime.service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,6 +36,15 @@ dotenv.config();
 mongoose.set('bufferCommands', false);
 
 const app = express();
+const server = http.createServer(app);
+const io = new SocketIOServer(server, {
+  cors: {
+    origin: ['http://localhost:3000', 'http://localhost:4500'],
+    credentials: true
+  }
+});
+
+setRealtimeServer(io);
 
 // Middleware
 app.use(cors({
@@ -54,6 +78,7 @@ app.use('/api/tasks', taskRoutes);
 app.use('/api/panels', panelRoutes);
 app.use('/api/requests', requestRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/zentrixa', zentrixaRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -65,6 +90,94 @@ app.get('/api/health', (req, res) => {
       : 'Server is running but MongoDB is not connected',
     database: isMongoReady ? 'connected' : 'disconnected',
   });
+});
+
+const sendSocketError = (socket, message) => {
+  try {
+    socket.emit('chat:error', { message });
+  } catch {
+    // ignore socket failures
+  }
+};
+
+io.on('connection', async (socket) => {
+  try {
+    const projectId = socket.handshake.query.projectId?.toString() || '';
+    const conversationWith = socket.handshake.query.conversationWith?.toString() || 'public';
+    const token = socket.handshake.auth?.token?.toString() || socket.handshake.query.token?.toString() || '';
+
+    const user = await parseChatToken(token);
+    if (!user) {
+      sendSocketError(socket, 'Invalid or missing token');
+      socket.disconnect(true);
+      return;
+    }
+
+    const project = await populateProjectMembers(Project.findById(projectId));
+    if (!project) {
+      sendSocketError(socket, 'Project not found');
+      socket.disconnect(true);
+      return;
+    }
+
+    if (!hasProjectAccess(project, user)) {
+      sendSocketError(socket, 'Not authorized to view this project');
+      socket.disconnect(true);
+      return;
+    }
+
+    const roomKey = getChatRoomKey({
+      projectId,
+      conversationWith,
+      userId: user._id.toString()
+    });
+
+    subscribeSocketRoom(roomKey, socket);
+    socket.join(roomKey);
+    socket.join(`user:${user._id.toString()}`);
+    socket.emit('chat:ready', { roomKey });
+
+    socket.on('chat:typing', async () => {
+      try {
+        setTypingState({
+          projectId,
+          senderId: user._id,
+          senderName: user.name,
+          recipientId: conversationWith === 'public' ? null : conversationWith
+        });
+        socket.to(roomKey).emit('chat:typing', {
+          senderId: user._id.toString(),
+          senderName: user.name
+        });
+      } catch (error) {
+        sendSocketError(socket, error.message || 'Typing update failed');
+      }
+    });
+
+    socket.on('chat:message', async (payload) => {
+      try {
+        const result = await createAndBroadcastProjectChatMessage({
+          projectId,
+          content: payload?.content,
+          recipientId: conversationWith === 'public' ? null : conversationWith,
+          user,
+          mentionedUserIds: Array.isArray(payload?.mentionedUserIds) ? payload.mentionedUserIds : []
+        });
+        socket.emit('chat:message:ack', {
+          messageId: result.message._id.toString()
+        });
+      } catch (error) {
+        sendSocketError(socket, error.message || 'Invalid chat payload');
+      }
+    });
+
+    socket.on('disconnect', () => {
+      unsubscribeSocketRoom(roomKey, socket);
+    });
+  } catch (error) {
+    sendSocketError(socket, error.message || 'WebSocket error');
+    socket.disconnect(true);
+  }
 });
 
 // Error handling middleware
@@ -83,7 +196,7 @@ async function startServer() {
     });
     console.log('Connected to MongoDB');
 
-    app.listen(PORT, () => {
+    server.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
     });
   } catch (error) {

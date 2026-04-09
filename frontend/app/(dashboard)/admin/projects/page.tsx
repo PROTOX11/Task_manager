@@ -62,6 +62,14 @@ export default function AdminProjectsPage() {
         </p>
       </div>
 
+      <div className="flex justify-end">
+        <Link href="/projects/new">
+          <Button>
+            Create Project
+          </Button>
+        </Link>
+      </div>
+
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardContent className="p-4">

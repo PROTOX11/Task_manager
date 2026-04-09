@@ -8,6 +8,7 @@ import {
   updateProject,
   inviteDeveloper,
   leaveProject,
+  removeProjectMember,
   deleteProject,
   getProjectStats
 } from '../controllers/project.controller.js';
@@ -44,6 +45,9 @@ router.put('/:id', authorizeAdmin, updateProject);
 
 // Invite developer to project (admin only)
 router.post('/:id/invite', authorizeAdmin, inviteDeveloper);
+
+// Remove project member (admin only)
+router.delete('/:id/members/:memberId', authorizeAdmin, removeProjectMember);
 
 // Leave project (developer)
 router.post('/:id/leave', leaveProject);

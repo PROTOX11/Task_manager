@@ -23,6 +23,16 @@ const panelSchema = new mongoose.Schema({
   color: {
     type: String,
     default: '#007bff'
+  },
+  width: {
+    type: Number,
+    default: 320,
+    min: 240
+  },
+  height: {
+    type: Number,
+    default: 520,
+    min: 320
   }
 }, {
   timestamps: true

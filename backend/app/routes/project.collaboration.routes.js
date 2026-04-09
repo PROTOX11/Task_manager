@@ -5,6 +5,7 @@ import {
   getProjectTypingStatus,
   sendProjectChatMessage,
   setProjectTypingStatus,
+  streamProjectChat,
   getProjectMeetings,
   createProjectMeeting
 } from '../controllers/project.collaboration.controller.js';
@@ -15,6 +16,7 @@ const router = express.Router();
 router.use(authenticate);
 
 router.get('/:projectId/chat', getProjectChatMessages);
+router.get('/:projectId/chat/stream', streamProjectChat);
 router.get('/:projectId/chat/typing', getProjectTypingStatus);
 router.post(
   '/:projectId/chat',

@@ -3,3 +3,17 @@ package-lock.json
 .env
 .env.*
 !.env.example
+.next
+frontend/.next/
+frontend/.turbo/
+frontend/coverage/
+frontend/*.tsbuildinfo
+frontend/.next
+frontend/.next/**
+backend/uploads/
+screenshots/
+.repomix-output.txt
+*.log
+dist/
+build/
+frontend/components/notification_sound/

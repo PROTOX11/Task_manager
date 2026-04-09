@@ -26,13 +26,13 @@ router.get('/project/:projectId', getPanelsByProject);
 // Create panel (admin only)
 router.post('/', authorizeAdmin, validatePanel, createPanel);
 
+// Reorder panels (admin only)
+router.put('/reorder', authorizeAdmin, reorderPanels);
+
 // Update panel (admin only)
 router.put('/:id', authorizeAdmin, updatePanel);
 
 // Delete panel (admin only)
 router.delete('/:id', authorizeAdmin, deletePanel);
-
-// Reorder panels (admin only)
-router.put('/reorder', authorizeAdmin, reorderPanels);
 
 export default router;

@@ -49,6 +49,12 @@ export const getAllProjects = async (req, res) => {
 export const createProject = async (req, res) => {
   try {
     const { name, description, panels, githubRepository } = req.body;
+    const defaultPanels = [
+      { name: 'To Do', description: 'Tasks waiting to be started', color: '#64748b' },
+      { name: 'In Progress', description: 'Tasks currently being worked on', color: '#2563eb' },
+      { name: 'Done', description: 'Completed tasks', color: '#16a34a' },
+    ];
+    const panelsToCreate = Array.isArray(panels) && panels.length > 0 ? panels : defaultPanels;
 
     const project = new Project({
       name,
@@ -60,9 +66,9 @@ export const createProject = async (req, res) => {
     await project.save();
 
     // Create default panels if provided
-    if (panels && panels.length > 0) {
+    if (panelsToCreate && panelsToCreate.length > 0) {
       const panelDocs = await Panel.insertMany(
-        panels.map((panel, index) => ({
+        panelsToCreate.map((panel, index) => ({
           name: panel.name,
           projectId: project._id,
           description: panel.description || '',
@@ -257,6 +263,57 @@ export const leaveProject = async (req, res) => {
   } catch (error) {
     console.error('Leave project error:', error);
     res.status(500).json({ message: 'Error leaving project', error: error.message });
+  }
+};
+
+// Remove project member (admin only)
+export const removeProjectMember = async (req, res) => {
+  try {
+    const { id, memberId } = req.params;
+
+    const project = await Project.findById(id);
+    if (!project) {
+      return res.status(404).json({ message: 'Project not found' });
+    }
+
+    if (project.createdBy.toString() !== req.userId.toString()) {
+      return res.status(403).json({ message: 'Not authorized to remove project members' });
+    }
+
+    if (memberId.toString() === project.createdBy.toString()) {
+      return res.status(400).json({ message: 'Project owner cannot be removed' });
+    }
+
+    const member = await User.findById(memberId);
+    if (!member || member.role !== 'developer') {
+      return res.status(404).json({ message: 'Member not found' });
+    }
+
+    const isMember = project.developers.some((dev) => dev.toString() === memberId.toString());
+    if (!isMember) {
+      return res.status(400).json({ message: 'User is not a member of this project' });
+    }
+
+    project.developers = project.developers.filter(
+      (dev) => dev.toString() !== memberId.toString()
+    );
+    await project.save();
+
+    await User.findByIdAndUpdate(memberId, {
+      $pull: { joinedProjects: id }
+    });
+
+    await Task.updateMany(
+      { projectId: id, assignedDeveloper: memberId },
+      { $unset: { assignedDeveloper: '' }, status: 'pending' }
+    );
+
+    res.json({
+      message: 'Project member removed successfully'
+    });
+  } catch (error) {
+    console.error('Remove project member error:', error);
+    res.status(500).json({ message: 'Error removing project member', error: error.message });
   }
 };
 

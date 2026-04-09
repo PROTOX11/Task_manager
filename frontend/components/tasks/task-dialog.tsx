@@ -86,7 +86,10 @@ export function TaskDialog({ task, project, onClose }: TaskDialogProps) {
   }, [mentionQuery, projectMembers]);
 
   if (!task) return null;
-  const canEditTask = user?.role === "admin" || task.reporter.id === user?.id;
+  const canEditTask =
+    user?.role === "admin" ||
+    task.reporter.id === user?.id ||
+    task.assignee?.id === user?.id;
   const canComment = Boolean(user);
 
   const formatDateForInput = (value?: string) => {
@@ -251,7 +254,7 @@ export function TaskDialog({ task, project, onClose }: TaskDialogProps) {
             <div className="flex flex-wrap gap-4">
               <div>
                 <p className="mb-1 text-sm text-muted-foreground">Status</p>
-                <Select value={task.status} onValueChange={handleStatusChange} disabled={!user}>
+                <Select value={task.status} onValueChange={handleStatusChange} disabled={!canEditTask}>
                   <SelectTrigger className="w-[140px]">
                     <SelectValue />
                   </SelectTrigger>

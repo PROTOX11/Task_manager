@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { useData } from "@/lib/data-context";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,8 +20,17 @@ const getNotificationLabel = (type: string) => {
 
 export default function NotificationsPage() {
   const { notifications, markNotificationRead, markAllNotificationsRead } = useData();
+  const autoReadRef = useRef(false);
 
   const unreadNotifications = notifications.filter((notification) => !notification.read);
+
+  useEffect(() => {
+    if (autoReadRef.current) return;
+    if (notifications.length === 0 || unreadNotifications.length === 0) return;
+
+    autoReadRef.current = true;
+    void Promise.all(unreadNotifications.map((notification) => markNotificationRead(notification.id)));
+  }, [markNotificationRead, notifications, unreadNotifications]);
 
   const handleMarkAllRead = async () => {
     await markAllNotificationsRead();

@@ -26,6 +26,70 @@ function getApiBaseUrl(): string {
   return SERVER_FALLBACK_API;
 }
 
+export { getApiBaseUrl };
+
+function toWebSocketBaseUrl(url: string): string {
+  const trimmed = url.replace(/\/+$/, "");
+  if (trimmed.startsWith("ws://") || trimmed.startsWith("wss://")) {
+    return trimmed;
+  }
+
+  if (trimmed.startsWith("http://")) {
+    return trimmed.replace(/^http:\/\//, "ws://").replace(/\/api$/, "");
+  }
+
+  if (trimmed.startsWith("https://")) {
+    return trimmed.replace(/^https:\/\//, "wss://").replace(/\/api$/, "");
+  }
+
+  return trimmed;
+}
+
+export function getWebSocketBaseUrl(): string {
+  const fromEnv = process.env.NEXT_PUBLIC_WS_BASE_URL?.trim();
+  if (fromEnv) {
+    return toWebSocketBaseUrl(fromEnv);
+  }
+
+  const apiBase = getApiBaseUrl();
+  if (apiBase === "/api") {
+    return "ws://localhost:5000";
+  }
+
+  return toWebSocketBaseUrl(apiBase);
+}
+
+function toSocketIoBaseUrl(url: string): string {
+  const trimmed = url.replace(/\/+$/, "");
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    return trimmed.replace(/\/api$/, "");
+  }
+
+  if (trimmed.startsWith("ws://")) {
+    return trimmed.replace(/^ws:\/\//, "http://").replace(/\/api$/, "");
+  }
+
+  if (trimmed.startsWith("wss://")) {
+    return trimmed.replace(/^wss:\/\//, "https://").replace(/\/api$/, "");
+  }
+
+  return trimmed;
+}
+
+export function getSocketIoBaseUrl(): string {
+  const fromEnv = process.env.NEXT_PUBLIC_SOCKET_IO_URL?.trim();
+  if (fromEnv) {
+    return toSocketIoBaseUrl(fromEnv);
+  }
+
+  const apiBase = getApiBaseUrl();
+  if (apiBase === "/api") {
+    return "http://localhost:5000";
+  }
+
+  return toSocketIoBaseUrl(apiBase);
+}
+
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
 

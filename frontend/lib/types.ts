@@ -32,6 +32,8 @@ export interface Panel {
   name: string;
   order: number;
   projectId: string;
+  width?: number;
+  height?: number;
   tasks: Task[];
 }
 

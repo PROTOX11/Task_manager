@@ -48,6 +48,7 @@ export function CreateTaskDialog({
 }: CreateTaskDialogProps) {
   const { createTask } = useData();
   const { user } = useAuth();
+  const canManageTasks = user?.role === "admin";
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingDevelopers, setIsLoadingDevelopers] = useState(false);
   const [title, setTitle] = useState("");
@@ -59,7 +60,7 @@ export function CreateTaskDialog({
   const [developers, setDevelopers] = useState<DeveloperOption[]>([]);
 
   useEffect(() => {
-    if (!user || user.role !== "admin") {
+    if (!canManageTasks) {
       setDevelopers([]);
       return;
     }
@@ -94,11 +95,12 @@ export function CreateTaskDialog({
     return () => {
       isMounted = false;
     };
-  }, [user]);
+  }, [canManageTasks, user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!panelId) return;
+    if (!canManageTasks) return;
 
     setIsLoading(true);
 
@@ -131,6 +133,10 @@ export function CreateTaskDialog({
     setAssigneeId("");
     onClose();
   };
+
+  if (!canManageTasks) {
+    return null;
+  }
 
   return (
     <Dialog open={!!panelId} onOpenChange={() => handleClose()}>

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiRequest } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 import { useData } from "@/lib/data-context";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,8 +25,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { Field, FieldLabel } from "@/components/ui/field";
-import { MoreHorizontal, Search, UserPlus, Settings, Trash2, Users } from "lucide-react";
+import { MoreHorizontal, Search, UserPlus, Settings, Trash2, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import type { Project } from "@/lib/types";
 
@@ -42,13 +44,17 @@ interface ProjectHeaderProps {
 
 export function ProjectHeader({ project }: ProjectHeaderProps) {
   const router = useRouter();
-  const { updateProject, deleteProject, sendInvitation } = useData();
+  const { user } = useAuth();
+  const { updateProject, deleteProject, sendInvitation, removeProjectMember } = useData();
   const [showInviteDialog, setShowInviteDialog] = useState(false);
+  const [showMembersDialog, setShowMembersDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteMessage, setInviteMessage] = useState("");
   const [developers, setDevelopers] = useState<DeveloperOption[]>([]);
   const [developerSearch, setDeveloperSearch] = useState("");
+  const [memberSearch, setMemberSearch] = useState("");
+  const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
   const [loadingDevelopers, setLoadingDevelopers] = useState(false);
 
   useEffect(() => {
@@ -105,6 +111,66 @@ export function ProjectHeader({ project }: ProjectHeaderProps) {
     return filtered.slice(0, 10);
   }, [developers, developerSearch]);
 
+  const contributorStats = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const member of project.members) {
+      counts.set(member.user.id, 0);
+    }
+
+    for (const panel of project.panels || []) {
+      for (const task of panel.tasks || []) {
+        if (task.reporter?.id) {
+          counts.set(task.reporter.id, (counts.get(task.reporter.id) || 0) + 2);
+        }
+        if (task.assignee?.id) {
+          counts.set(task.assignee.id, (counts.get(task.assignee.id) || 0) + 1);
+        }
+        for (const comment of task.comments || []) {
+          if (comment.author?.id) {
+            counts.set(comment.author.id, (counts.get(comment.author.id) || 0) + 1);
+          }
+        }
+      }
+    }
+
+    const rankedMembers = [...project.members].sort((a, b) => {
+      const aScore = counts.get(a.user.id) || 0;
+      const bScore = counts.get(b.user.id) || 0;
+      if (bScore !== aScore) return bScore - aScore;
+      return `${a.user.firstName} ${a.user.lastName}`.localeCompare(`${b.user.firstName} ${b.user.lastName}`);
+    });
+
+    return {
+      rankedMembers,
+      topMembers: rankedMembers.slice(0, 3),
+      counts,
+    };
+  }, [project.members, project.panels]);
+
+  const visibleMembers = useMemo(() => {
+    const q = memberSearch.trim().toLowerCase();
+    const members = [...project.members].sort((a, b) => {
+      const aScore = contributorStats.counts.get(a.user.id) || 0;
+      const bScore = contributorStats.counts.get(b.user.id) || 0;
+      if (bScore !== aScore) return bScore - aScore;
+      return `${a.user.firstName} ${a.user.lastName}`.localeCompare(`${b.user.firstName} ${b.user.lastName}`);
+    });
+
+    if (!q) return members;
+
+    return members.filter((member) => {
+      const haystack = [
+        member.user.firstName,
+        member.user.lastName,
+        member.user.email,
+        member.role,
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [project.members, contributorStats.counts, memberSearch]);
+
   const handleInvite = async () => {
     if (!inviteEmail.trim()) return;
     await sendInvitation(project.id, inviteEmail, inviteMessage);
@@ -119,6 +185,19 @@ export function ProjectHeader({ project }: ProjectHeaderProps) {
     await deleteProject(project.id);
     toast.success("Project deleted");
     router.push("/dashboard");
+  };
+
+  const handleRemoveMember = async (memberId: string) => {
+    try {
+      setRemovingMemberId(memberId);
+      await removeProjectMember(project.id, memberId);
+      toast.success("Member removed");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to remove member";
+      toast.error(message);
+    } finally {
+      setRemovingMemberId(null);
+    }
   };
 
   const handleStatusChange = async (status: Project["status"]) => {
@@ -162,7 +241,7 @@ export function ProjectHeader({ project }: ProjectHeaderProps) {
           <div className="mb-2 flex items-center justify-between gap-3">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                Connected members
+                Top contributed connected member
               </p>
               <p className="text-xs text-muted-foreground">
                 {project.members.length} people connected to this project
@@ -172,33 +251,57 @@ export function ProjectHeader({ project }: ProjectHeaderProps) {
               Live
             </Badge>
           </div>
-          <ScrollArea className="max-h-24">
-            <div className="grid gap-1.5 pr-2 sm:grid-cols-2 xl:grid-cols-3">
-              {project.members.map((member) => (
-                <div
-                  key={member.user.id}
-                  className="flex items-center gap-2 rounded-xl border bg-background/90 px-2.5 py-2 shadow-sm transition-colors hover:bg-muted/40"
-                >
-                  <Avatar className="h-8 w-8">
-                    <AvatarFallback className="text-xs">
-                      {getInitials(member.user.firstName, member.user.lastName)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="truncate text-sm font-medium">
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            {contributorStats.topMembers.map((member, index) => (
+              <HoverCard key={member.user.id} openDelay={120}>
+                <HoverCardTrigger asChild>
+                  <button
+                    type="button"
+                    className={`group flex flex-col items-center gap-2 rounded-2xl border bg-background/80 p-3 text-center shadow-sm transition hover:border-primary/40 hover:bg-background ${
+                      index === 0 ? "scale-[1.03]" : ""
+                    }`}
+                    aria-label={`${member.user.firstName} ${member.user.lastName}`}
+                  >
+                    <Avatar className={`${index === 0 ? "h-16 w-16" : "h-14 w-14"}`}>
+                      <AvatarFallback className={index === 0 ? "text-lg" : "text-sm"}>
+                        {getInitials(member.user.firstName, member.user.lastName)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-medium">
                         {member.user.firstName} {member.user.lastName}
                       </p>
-                      <Badge variant="secondary" className="shrink-0 text-[9px] capitalize">
-                        {member.role}
-                      </Badge>
+                      <p className="text-[10px] text-muted-foreground">
+                        {contributorStats.counts.get(member.user.id) || 0} pts
+                      </p>
                     </div>
-                    <p className="truncate text-[11px] text-muted-foreground">{member.user.email}</p>
+                  </button>
+                </HoverCardTrigger>
+                <HoverCardContent className="w-72">
+                  <div className="flex items-start gap-3">
+                    <Avatar className="h-12 w-12">
+                      <AvatarFallback className="text-sm">
+                        {getInitials(member.user.firstName, member.user.lastName)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <p className="truncate font-medium">
+                          {member.user.firstName} {member.user.lastName}
+                        </p>
+                        <Badge variant="secondary" className="shrink-0 text-[10px] capitalize">
+                          {member.role}
+                        </Badge>
+                      </div>
+                      <p className="truncate text-sm text-muted-foreground">
+                        {member.user.email}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          </ScrollArea>
+                </HoverCardContent>
+              </HoverCard>
+            ))}
+          </div>
         </div>
         <div className="flex shrink-0 items-center gap-3 sm:flex-col sm:items-stretch">
           <Button variant="outline" className="sm:w-full" onClick={() => setShowInviteDialog(true)}>
@@ -222,12 +325,8 @@ export function ProjectHeader({ project }: ProjectHeaderProps) {
               <Settings className="mr-2 h-4 w-4" />
               Mark as Completed
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => handleStatusChange("archived")}>
-              <Settings className="mr-2 h-4 w-4" />
-              Archive Project
-            </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setShowMembersDialog(true)}>
               <Users className="mr-2 h-4 w-4" />
               View Members ({project.members.length})
             </DropdownMenuItem>
@@ -331,6 +430,97 @@ export function ProjectHeader({ project }: ProjectHeaderProps) {
             </Button>
             <Button onClick={handleInvite} disabled={!inviteEmail.trim()}>
               Send Invitation
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showMembersDialog} onOpenChange={setShowMembersDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Connected Members</DialogTitle>
+            <DialogDescription>
+              Search members connected to this project and remove them if needed.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Field>
+              <FieldLabel htmlFor="member-search">Search Members</FieldLabel>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  id="member-search"
+                  value={memberSearch}
+                  onChange={(e) => setMemberSearch(e.target.value)}
+                  placeholder="Search by name, email, or role"
+                  className="pl-9"
+                />
+              </div>
+            </Field>
+
+            <ScrollArea className="max-h-96 rounded-lg border">
+              <div className="space-y-2 p-3">
+                {visibleMembers.map((member) => {
+                  const isOwner = member.user.id === project.owner.id;
+                  const canRemove = user?.role === "admin" && !isOwner && member.user.id !== user?.id;
+                  return (
+                    <div
+                      key={member.user.id}
+                      className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <Avatar className="h-10 w-10">
+                          <AvatarFallback className="text-xs">
+                            {getInitials(member.user.firstName, member.user.lastName)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="truncate font-medium">
+                              {member.user.firstName} {member.user.lastName}
+                            </p>
+                            <Badge variant="secondary" className="text-[10px] capitalize">
+                              {member.role}
+                            </Badge>
+                          </div>
+                          <p className="truncate text-sm text-muted-foreground">
+                            {member.user.email}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {isOwner ? (
+                          <Badge variant="outline" className="text-[10px]">
+                            Owner
+                          </Badge>
+                        ) : null}
+                        {canRemove ? (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-destructive"
+                            onClick={() => void handleRemoveMember(member.user.id)}
+                            disabled={removingMemberId === member.user.id}
+                            title="Remove member"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+                {visibleMembers.length === 0 ? (
+                  <div className="py-8 text-center text-sm text-muted-foreground">
+                    No members found.
+                  </div>
+                ) : null}
+              </div>
+            </ScrollArea>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowMembersDialog(false)}>
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>

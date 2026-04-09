@@ -19,7 +19,7 @@ export const getPanelsByProject = async (req, res) => {
 // Create panel
 export const createPanel = async (req, res) => {
   try {
-    const { name, projectId, description, color } = req.body;
+    const { name, projectId, description, color, width, height } = req.body;
 
     // Check if project exists
     const project = await Project.findById(projectId);
@@ -40,7 +40,9 @@ export const createPanel = async (req, res) => {
       projectId,
       description: description || '',
       color: color || '#007bff',
-      order: panelCount
+      order: panelCount,
+      width: Number(width) || 320,
+      height: Number(height) || 520
     });
 
     await panel.save();
@@ -63,7 +65,7 @@ export const createPanel = async (req, res) => {
 export const updatePanel = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, description, color, order } = req.body;
+    const { name, description, color, order, width, height } = req.body;
 
     const panel = await Panel.findById(id);
     if (!panel) {
@@ -80,6 +82,8 @@ export const updatePanel = async (req, res) => {
     if (description !== undefined) panel.description = description;
     if (color) panel.color = color;
     if (order !== undefined) panel.order = order;
+    if (width !== undefined) panel.width = Number(width);
+    if (height !== undefined) panel.height = Number(height);
 
     await panel.save();
 

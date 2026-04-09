@@ -352,22 +352,22 @@ export default function HomePage() {
             {/* The Restructured Cards Grid */}
             <div className="grid gap-6 md:grid-cols-3">
               {[
-                { 
-                  src: "/11.png", 
+                  { 
+                    src: "/11.jpg", 
                   titleLine1: "Global", titleLine2: "Tracking", 
                   tag: "Innovation", 
                   desc1: "Track every step of your code lifecycle from backlog to deployment with real-time updates.",
                   desc2: "Efficiently manage feature development, priority bug fixes, and current sprint priorities in one view."
                 },
-                { 
-                  src: "/22.png", 
+                  { 
+                    src: "/22.jpg", 
                   titleLine1: "Project", titleLine2: "View", 
                   tag: "Fluidity", 
                   desc1: "Visualize your entire team's workflow seamlessly with an intuitive, drag-and-drop kanban structure.",
                   desc2: "Identify roadblocks instantly, assign tasks automatically, and keep the momentum pushing forward."
                 },
-                { 
-                  src: "/33.png", 
+                  { 
+                    src: "/33.jpg", 
                   titleLine1: "Admin", titleLine2: "Portal", 
                   tag: "Governance", 
                   desc1: "Govern your workspace with enterprise-grade controls, role permissions, and advanced security.",

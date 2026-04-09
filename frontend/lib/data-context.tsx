@@ -1,9 +1,11 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, ReactNode } from "react";
 import type { Project, Panel, Task, ProjectRequest, Notification, User } from "./types";
 import { useAuth } from "./auth-context";
-import { apiRequest } from "./api";
+import { apiRequest, getSocketIoBaseUrl, getToken } from "./api";
+import { playNotificationSound } from "./notification-sounds";
+import { io, Socket } from "socket.io-client";
 
 interface DataContextType {
   projects: Project[];
@@ -13,8 +15,9 @@ interface DataContextType {
   updateProject: (id: string, data: Partial<Project>) => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
   addPanel: (projectId: string, name: string) => Promise<Panel>;
-  updatePanel: (projectId: string, panelId: string, name: string) => Promise<void>;
+  updatePanel: (projectId: string, panelId: string, data: Partial<Panel>) => Promise<void>;
   deletePanel: (projectId: string, panelId: string) => Promise<void>;
+  reorderPanels: (projectId: string, panelOrder: string[]) => Promise<void>;
   createTask: (data: CreateTaskData) => Promise<Task>;
   updateTask: (taskId: string, data: Partial<Task>) => Promise<void>;
   deleteTask: (taskId: string) => Promise<void>;
@@ -23,6 +26,7 @@ interface DataContextType {
   toggleSubtask: (taskId: string, subtaskId: string) => Promise<void>;
   addSubtask: (taskId: string, title: string) => Promise<void>;
   sendInvitation: (projectId: string, email: string, message?: string) => Promise<void>;
+  removeProjectMember: (projectId: string, memberId: string) => Promise<void>;
   respondToRequest: (requestId: string, accept: boolean) => Promise<void>;
   markNotificationRead: (notificationId: string) => Promise<void>;
   markAllNotificationsRead: () => Promise<void>;
@@ -69,10 +73,14 @@ const mapApiUser = (user: { _id?: string; id?: string; name: string; email: stri
   };
 };
 
-const mapTaskStatus = (status: string): Task["status"] => {
-  if (status === "in-progress") return "in_progress";
-  if (status === "review") return "review";
-  if (status === "completed") return "done";
+const mapTaskStatus = (task: any, viewerRole?: User["role"]): Task["status"] => {
+  if (viewerRole === "developer") {
+    if (task?.completedByDeveloper && !task?.approvedByAdmin) return "done";
+    if (task?.status === "review") return "done";
+  }
+  if (task?.status === "completed") return "done";
+  if (task?.status === "review") return "review";
+  if (task?.status === "in-progress") return "in_progress";
   return "todo";
 };
 
@@ -148,6 +156,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [requests, setRequests] = useState<ProjectRequest[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const loadedNotificationsRef = useRef(false);
+  const notificationIdsRef = useRef<Set<string>>(new Set());
+  const socketRef = useRef<Socket | null>(null);
   const loadProjects = async () => {
     if (!user) return;
     const projectResponse = await apiRequest<{ projects: Array<any> }>("/projects");
@@ -173,7 +184,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
             id: apiTask._id.toString(),
             title: apiTask.title,
             description: apiTask.description || "",
-            status: mapTaskStatus(apiTask.status),
+            status: mapTaskStatus(apiTask, user?.role),
             priority: apiTask.priority || "medium",
             assignee: apiTask.assignedDeveloper ? mapApiUser(apiTask.assignedDeveloper) : undefined,
             reporter: apiTask.createdBy ? mapApiUser(apiTask.createdBy) : user,
@@ -214,6 +225,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
             name: p.name,
             order: p.order || 0,
             projectId,
+            width: p.width || 320,
+            height: p.height || 520,
             tasks: tasksByPanel[p._id.toString()] || [],
           })),
           createdAt: apiProject.createdAt || new Date().toISOString(),
@@ -252,14 +265,67 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const loadNotifications = async () => {
     if (!user) return;
     const response = await apiRequest<{ notifications: Array<any> }>("/notifications");
-    setNotifications((response.notifications || []).map(mapNotification));
+    const nextNotifications = (response.notifications || []).map(mapNotification);
+    const nextIds = new Set(nextNotifications.map((notification) => notification.id));
+
+    if (loadedNotificationsRef.current) {
+      for (const notification of nextNotifications) {
+        if (!notification.read && !notificationIdsRef.current.has(notification.id)) {
+          playNotificationSound({
+            notification,
+            senderRole: notification.sender?.role,
+          });
+        }
+      }
+    }
+
+    notificationIdsRef.current = nextIds;
+    loadedNotificationsRef.current = true;
+    setNotifications(nextNotifications);
   };
+
+  useEffect(() => {
+    if (!user || typeof window === "undefined") return;
+
+    const token = getToken();
+    if (!token) return;
+
+    const socket = io(getSocketIoBaseUrl(), {
+      transports: ["websocket"],
+      auth: { token },
+    });
+
+    socketRef.current = socket;
+
+    socket.on("notification:new", (payload: { notification?: any }) => {
+      const notification = payload?.notification;
+      if (!notification?._id) return;
+
+      const mapped = mapNotification(notification);
+      setNotifications((current) => {
+        if (current.some((item) => item.id === mapped.id)) return current;
+        return [mapped, ...current];
+      });
+      notificationIdsRef.current.add(mapped.id);
+      playNotificationSound({
+        notification: mapped,
+        senderRole: mapped.sender?.role,
+      });
+    });
+
+    return () => {
+      socketRef.current = null;
+      socket.disconnect();
+    };
+  }, [user]);
 
   useEffect(() => {
     if (!user) {
       setProjects([]);
       setRequests([]);
       setNotifications([]);
+      loadedNotificationsRef.current = false;
+      notificationIdsRef.current = new Set();
       return;
     }
     let isMounted = true;
@@ -341,14 +407,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
       name: response.panel.name,
       order: response.panel.order || 0,
       projectId,
+      width: response.panel.width || 320,
+      height: response.panel.height || 520,
       tasks: [],
     };
   };
 
-  const updatePanel = async (_projectId: string, panelId: string, name: string) => {
+  const updatePanel = async (_projectId: string, panelId: string, data: Partial<Panel>) => {
     await apiRequest(`/panels/${panelId}`, {
       method: "PUT",
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({
+        name: data.name,
+        description: (data as { description?: string }).description,
+        color: (data as { color?: string }).color,
+        order: data.order,
+        width: data.width,
+        height: data.height,
+      }),
     });
     await loadProjects();
   };
@@ -360,6 +435,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
         p.id === projectId ? { ...p, panels: p.panels.filter((panel) => panel.id !== panelId) } : p
       )
     );
+  };
+
+  const reorderPanels = async (projectId: string, panelOrder: string[]) => {
+    await apiRequest("/panels/reorder", {
+      method: "PUT",
+      body: JSON.stringify({ projectId, panelOrder }),
+    });
+    await loadProjects();
   };
 
   const createTask = async (data: CreateTaskData): Promise<Task> => {
@@ -404,7 +487,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       id: response.task._id.toString(),
       title: response.task.title,
       description: response.task.description || "",
-      status: mapTaskStatus(response.task.status),
+      status: mapTaskStatus(response.task, user?.role),
       priority: response.task.priority,
       reporter: user!,
       panelId: response.task.panelId?.toString() || data.panelId,
@@ -593,6 +676,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await loadRequests();
   };
 
+  const removeProjectMember = async (projectId: string, memberId: string) => {
+    await apiRequest(`/projects/${projectId}/members/${memberId}`, {
+      method: "DELETE",
+    });
+    await loadProjects();
+  };
+
   const respondToRequest = async (requestId: string, accept: boolean) => {
     await apiRequest(`/requests/${requestId}/${accept ? "accept" : "reject"}`, {
       method: "PUT",
@@ -639,6 +729,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         addPanel,
         updatePanel,
         deletePanel,
+        reorderPanels,
         createTask,
         updateTask,
         deleteTask,
@@ -647,6 +738,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         toggleSubtask,
         addSubtask,
         sendInvitation,
+        removeProjectMember,
         respondToRequest,
         markNotificationRead,
         markAllNotificationsRead,

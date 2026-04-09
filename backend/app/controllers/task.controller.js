@@ -233,6 +233,7 @@ export const createTask = async (req, res) => {
       panelId,
       assignedDeveloper,
       createdBy: req.userId,
+      status: 'pending',
       priority: priority || 'medium',
       deadline: deadline ? new Date(deadline) : undefined,
       attachments: uploadedFiles.map(mapUploadedFile),
@@ -554,9 +555,29 @@ export const updateTaskStatus = async (req, res) => {
     }
 
     const normalizedStatus = normalizeTaskStatus(status);
-    task.status = normalizedStatus;
+    const isAdmin = req.user?.role === 'admin';
+    const isDeveloperCompletion = !isAdmin && normalizedStatus === 'completed';
+
     if (panelId) {
       task.panelId = panelId;
+    }
+
+    if (isDeveloperCompletion) {
+      task.completedByDeveloper = true;
+      task.completedAt = new Date();
+      task.status = 'review';
+    } else {
+      task.status = normalizedStatus;
+      if (normalizedStatus === 'completed' && isAdmin) {
+        task.approvedByAdmin = true;
+        task.approvedAt = new Date();
+      }
+      if (normalizedStatus !== 'completed') {
+        task.completedByDeveloper = false;
+        task.completedAt = undefined;
+        task.approvedByAdmin = false;
+        task.approvedAt = undefined;
+      }
     }
     await task.save();
 
@@ -565,7 +586,9 @@ export const updateTaskStatus = async (req, res) => {
       .populate('createdBy', 'name email');
 
     res.json({
-      message: 'Task status updated',
+      message: isDeveloperCompletion
+        ? 'Task marked as completed. Waiting for admin approval.'
+        : 'Task status updated',
       task: updatedTask
     });
   } catch (error) {

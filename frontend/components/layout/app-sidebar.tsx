@@ -56,6 +56,9 @@ export function AppSidebar() {
   const { user, logout } = useAuth();
   const { projects, notifications } = useData();
   const unreadNotifications = notifications.filter((notification) => !notification.read).length;
+  const visibleMainNavItems = user?.role === "admin"
+    ? mainNavItems.filter((item) => item.title !== "Invitations")
+    : mainNavItems;
 
   const getInitials = (firstName: string, lastName: string) => {
     return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
@@ -77,7 +80,7 @@ export function AppSidebar() {
           <SidebarGroupLabel>Navigation</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-                {mainNavItems.map((item) => (
+                {visibleMainNavItems.map((item) => (
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton asChild isActive={pathname === item.href}>
                       <Link href={item.href}>
