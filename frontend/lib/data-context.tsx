@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useRef, useState, ReactNode } fro
 import type { Project, Panel, Task, ProjectRequest, Notification, User } from "./types";
 import { useAuth } from "./auth-context";
 import { apiRequest, getSocketIoBaseUrl, getToken } from "./api";
-import { playNotificationSound } from "./notification-sounds";
+import { playInvitationSound, playNotificationSound } from "./notification-sounds";
 import { io, Socket } from "socket.io-client";
 
 interface DataContextType {
@@ -137,6 +137,26 @@ const mapNotification = (notification: any): Notification => ({
   updatedAt: notification.updatedAt || notification.createdAt || new Date().toISOString(),
 });
 
+const mapProjectRequest = (request: any, viewer: User): ProjectRequest => ({
+  id: request._id.toString(),
+  project: {
+    id: request.projectId?._id?.toString() || request.projectId?.toString() || "",
+    name: request.projectId?.name || "Project",
+    description: request.projectId?.description || "",
+    status: "active" as const,
+    owner: mapApiUser(request.senderId || { id: "", name: "User", email: "", role: "developer" }),
+    members: [],
+    panels: [],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  sender: request.senderId ? mapApiUser(request.senderId) : mapApiUser({ id: "", name: "User", email: "", role: "developer" }),
+  recipient: viewer,
+  status: request.status,
+  message: request.message,
+  createdAt: request.createdAt || new Date().toISOString(),
+});
+
 const getPanelStatus = (panelName: string): Task["status"] => {
   const normalized = panelName.toLowerCase();
   if (normalized.includes("progress")) return "in_progress";
@@ -158,6 +178,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const loadedNotificationsRef = useRef(false);
   const notificationIdsRef = useRef<Set<string>>(new Set());
+  const loadedRequestsRef = useRef(false);
+  const requestIdsRef = useRef<Set<string>>(new Set());
   const socketRef = useRef<Socket | null>(null);
   const loadProjects = async () => {
     if (!user) return;
@@ -258,7 +280,21 @@ export function DataProvider({ children }: { children: ReactNode }) {
       status: r.status,
       message: r.message,
       createdAt: r.createdAt || new Date().toISOString(),
-    })); 
+    }));
+
+    if (loadedRequestsRef.current) {
+      for (const request of normalized) {
+        const senderRole = request.sender?.role;
+        const isNewRequest = !requestIdsRef.current.has(request.id);
+        const isIncoming = request.sender?.id !== user.id && request.status === "pending";
+        if (isNewRequest && isIncoming) {
+          playInvitationSound(senderRole);
+        }
+      }
+    }
+
+    requestIdsRef.current = new Set(normalized.map((request) => request.id));
+    loadedRequestsRef.current = true;
     setRequests(normalized);
   };
 
@@ -313,6 +349,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
       });
     });
 
+    socket.on("request:new", (payload: { request?: any }) => {
+      const request = payload?.request;
+      if (!request?._id) return;
+
+      const mapped = mapProjectRequest(request, user);
+      setRequests((current) => {
+        if (current.some((item) => item.id === mapped.id)) return current;
+        return [mapped, ...current];
+      });
+
+      requestIdsRef.current.add(mapped.id);
+      playInvitationSound(mapped.sender?.role);
+    });
+
     return () => {
       socketRef.current = null;
       socket.disconnect();
@@ -326,6 +376,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setNotifications([]);
       loadedNotificationsRef.current = false;
       notificationIdsRef.current = new Set();
+      loadedRequestsRef.current = false;
+      requestIdsRef.current = new Set();
       return;
     }
     let isMounted = true;
@@ -407,8 +459,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       name: response.panel.name,
       order: response.panel.order || 0,
       projectId,
-      width: response.panel.width || 320,
-      height: response.panel.height || 520,
+      width: response.panel.width || 224,
+      height: response.panel.height || 364,
       tasks: [],
     };
   };

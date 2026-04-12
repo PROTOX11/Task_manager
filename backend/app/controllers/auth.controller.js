@@ -757,6 +757,7 @@ export const updateProfile = async (req, res) => {
     }
 
     const { name, email } = req.body;
+    const avatarPath = req.file ? `/uploads/${req.file.filename}` : req.body.avatar;
 
     const user = await User.findById(req.userId);
     if (!user) {
@@ -772,6 +773,10 @@ export const updateProfile = async (req, res) => {
       user.email = email;
     }
 
+    if (typeof avatarPath === 'string') {
+      user.avatar = avatarPath;
+    }
+
     await user.save();
 
     res.json({
@@ -780,7 +785,8 @@ export const updateProfile = async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
-        role: user.role
+        role: user.role,
+        avatar: user.avatar
       }
     });
   } catch (error) {

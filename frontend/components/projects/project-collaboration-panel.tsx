@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { format, parseISO } from "date-fns";
 import { apiRequest, getSocketIoBaseUrl, getToken } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -8,6 +8,7 @@ import { useData } from "@/lib/data-context";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
@@ -85,7 +86,8 @@ export function ProjectCollaborationPanel({ project }: ProjectCollaborationPanel
   const { notifications } = useData();
   const [conversationWith, setConversationWith] = useState<string>(PUBLIC_CHAT);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [chatSearch, setChatSearch] = useState("");
+  const [chatFinderOpen, setChatFinderOpen] = useState(false);
+  const [chatFinderQuery, setChatFinderQuery] = useState("");
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [typingUsers, setTypingUsers] = useState<Array<{ senderId: string; senderName: string }>>([]);
   const [messageContent, setMessageContent] = useState("");
@@ -94,6 +96,7 @@ export function ProjectCollaborationPanel({ project }: ProjectCollaborationPanel
   const [meetingTime, setMeetingTime] = useState("");
   const [meetingNotes, setMeetingNotes] = useState("");
   const [meetingLink, setMeetingLink] = useState("");
+  const [chatHistoryHeight, setChatHistoryHeight] = useState(260);
   const [isSending, setIsSending] = useState(false);
   const [isScheduling, setIsScheduling] = useState(false);
   const [memberSearch, setMemberSearch] = useState("");
@@ -102,7 +105,17 @@ export function ProjectCollaborationPanel({ project }: ProjectCollaborationPanel
   const typingClearTimersRef = useRef<Map<string, number>>(new Map());
   const socketRef = useRef<Socket | null>(null);
   const pendingMentionIdsRef = useRef<Set<string>>(new Set());
+  const messageRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
+  const chatViewportWrapperRef = useRef<HTMLDivElement | null>(null);
+  const shouldAutoScrollRef = useRef(true);
+  const chatResizeRef = useRef<{
+    startY: number;
+    startHeight: number;
+  } | null>(null);
+  const chatResizeFrameRef = useRef<number | null>(null);
+  const pendingChatHeightRef = useRef<number | null>(null);
   const meetingStorageKey = useMemo(() => `zentrixa:meeting-link:${project.id}`, [project.id]);
+  const chatHistoryStorageKey = useMemo(() => `zentrixa:chat-height:${project.id}`, [project.id]);
 
   const members = useMemo(() => {
     const seen = new Set<string>();
@@ -164,52 +177,89 @@ export function ProjectCollaborationPanel({ project }: ProjectCollaborationPanel
       .slice(0, 5);
   }, [mentionQuery, members]);
 
-  const engagedDevelopers = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const member of members) {
-      if (member.user.role === "developer") {
-        counts.set(member.user.id, 0);
-      }
-    }
-
-    for (const message of messages) {
-      const senderId = message.sender.id;
-      if (!counts.has(senderId)) continue;
-      const current = counts.get(senderId) || 0;
-      counts.set(senderId, current + 1);
-    }
-
-    return [...members]
-      .filter((member) => member.user.role === "developer")
-      .map((member) => ({
-        member,
-        count: counts.get(member.user.id) || 0,
-      }))
-      .sort((a, b) => {
-        if (b.count !== a.count) return b.count - a.count;
-        const aName = `${a.member.user.firstName} ${a.member.user.lastName}`.toLowerCase();
-        const bName = `${b.member.user.firstName} ${b.member.user.lastName}`.toLowerCase();
-        return aName.localeCompare(bName);
-      })
-      .slice(0, 5);
-  }, [members, messages]);
-
-  const filteredMessages = useMemo(() => {
-    const query = chatSearch.trim().toLowerCase();
-    if (!query) return messages;
+  const chatFinderResults = useMemo(() => {
+    const query = chatFinderQuery.trim().toLowerCase();
+    if (!query) return [];
 
     return messages.filter((message) => {
       const senderName = `${message.sender.firstName} ${message.sender.lastName}`.toLowerCase();
       const recipientName = message.recipient
         ? `${message.recipient.firstName} ${message.recipient.lastName}`.toLowerCase()
         : "";
+      const createdAtText = new Date(message.createdAt).toLocaleString().toLowerCase();
       return (
         message.content.toLowerCase().includes(query) ||
         senderName.includes(query) ||
-        recipientName.includes(query)
+        recipientName.includes(query) ||
+        createdAtText.includes(query)
       );
     });
-  }, [chatSearch, messages]);
+  }, [chatFinderQuery, messages]);
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      const isFindShortcut = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f";
+      if (!isFindShortcut) return;
+      event.preventDefault();
+      setChatFinderOpen(true);
+    };
+
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, []);
+
+  useEffect(() => {
+    if (!chatFinderOpen || !chatFinderQuery.trim()) return;
+    const firstMatch = chatFinderResults[0];
+    if (!firstMatch) return;
+
+    const timer = window.setTimeout(() => {
+      messageRefs.current.get(firstMatch.id)?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }, 100);
+
+    return () => window.clearTimeout(timer);
+  }, [chatFinderOpen, chatFinderQuery, chatFinderResults]);
+
+  useEffect(() => {
+    const viewport = chatViewportWrapperRef.current?.querySelector(
+      '[data-slot="scroll-area-viewport"]'
+    ) as HTMLDivElement | null;
+
+    if (!viewport) return;
+
+    const isAtBottom = () => viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 72;
+
+    shouldAutoScrollRef.current = true;
+
+    const handleScroll = () => {
+      shouldAutoScrollRef.current = isAtBottom();
+    };
+
+    handleScroll();
+    viewport.addEventListener("scroll", handleScroll, { passive: true });
+
+    return () => viewport.removeEventListener("scroll", handleScroll);
+  }, [conversationWith]);
+
+  useEffect(() => {
+    const viewport = chatViewportWrapperRef.current?.querySelector(
+      '[data-slot="scroll-area-viewport"]'
+    ) as HTMLDivElement | null;
+
+    if (!viewport || !shouldAutoScrollRef.current) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      viewport.scrollTo({
+        top: viewport.scrollHeight,
+        behavior: "smooth",
+      });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [messages, conversationWith]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -227,6 +277,21 @@ export function ProjectCollaborationPanel({ project }: ProjectCollaborationPanel
       window.localStorage.removeItem(meetingStorageKey);
     }
   }, [meetingLink, meetingStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const storedHeight = window.localStorage.getItem(chatHistoryStorageKey);
+    if (!storedHeight) return;
+    const parsed = Number(storedHeight);
+    if (!Number.isNaN(parsed)) {
+      setChatHistoryHeight(Math.max(220, Math.min(380, parsed)));
+    }
+  }, [chatHistoryStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(chatHistoryStorageKey, String(chatHistoryHeight));
+  }, [chatHistoryHeight, chatHistoryStorageKey]);
 
   useEffect(() => {
     if (conversationWith !== PUBLIC_CHAT && !selectedMember) {
@@ -521,6 +586,47 @@ export function ProjectCollaborationPanel({ project }: ProjectCollaborationPanel
     toast.success("Meeting link copied");
   };
 
+  const startChatResize = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    chatResizeRef.current = {
+      startY: event.clientY,
+      startHeight: chatHistoryHeight,
+    };
+
+    const handleMove = (moveEvent: PointerEvent) => {
+      const state = chatResizeRef.current;
+      if (!state) return;
+
+      const nextHeight = Math.max(220, Math.min(380, state.startHeight + (moveEvent.clientY - state.startY)));
+      pendingChatHeightRef.current = Math.round(nextHeight);
+
+      if (chatResizeFrameRef.current !== null) return;
+      chatResizeFrameRef.current = window.requestAnimationFrame(() => {
+        chatResizeFrameRef.current = null;
+        if (pendingChatHeightRef.current) {
+          setChatHistoryHeight(pendingChatHeightRef.current);
+        }
+      });
+    };
+
+    const handleUp = () => {
+      chatResizeRef.current = null;
+      pendingChatHeightRef.current = null;
+      if (chatResizeFrameRef.current !== null) {
+        window.cancelAnimationFrame(chatResizeFrameRef.current);
+        chatResizeFrameRef.current = null;
+      }
+
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+    };
+
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp, { once: true });
+  };
+
   const insertMention = (memberId: string) => {
     const member = members.find((item) => item.user.id === memberId);
     if (!member) return;
@@ -537,7 +643,7 @@ export function ProjectCollaborationPanel({ project }: ProjectCollaborationPanel
 
   return (
     <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(340px,420px)]">
-      <Card className="min-w-0 border-border/60">
+      <Card className="relative min-w-0 overflow-hidden border-border/60">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <MessageSquare className="h-5 w-5" />
@@ -547,30 +653,8 @@ export function ProjectCollaborationPanel({ project }: ProjectCollaborationPanel
           Everyone connected to this project can see public chat. Pick a person for a private conversation.
         </CardDescription>
       </CardHeader>
-      <CardContent className="min-w-0 space-y-4">
+      <CardContent className="min-w-0 space-y-4 xl:pr-[21rem]">
           <div className="space-y-3">
-            <div className="space-y-2 rounded-xl border bg-muted/20 p-3">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-medium">Chat search</p>
-                {chatSearch.trim() && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setChatSearch("")}
-                    className="h-7 px-2 text-xs"
-                  >
-                    Clear
-                  </Button>
-                )}
-              </div>
-              <Input
-                value={chatSearch}
-                onChange={(e) => setChatSearch(e.target.value)}
-                placeholder="Search messages, names, or private chat text..."
-              />
-            </div>
-
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
@@ -667,13 +751,17 @@ export function ProjectCollaborationPanel({ project }: ProjectCollaborationPanel
             </div>
           </div>
 
-          <ScrollArea className="h-[320px] max-w-full rounded-lg border bg-background/50">
+          <div ref={chatViewportWrapperRef}>
+            <ScrollArea style={{ height: `${chatHistoryHeight}px` }} className="max-w-full rounded-lg border bg-background/50">
             <div className="space-y-3 p-4">
-              {filteredMessages.map((message) => {
+              {messages.map((message) => {
                 const isMine = message.sender.id === user?.id;
                 return (
                   <div
                     key={message.id}
+                    ref={(node) => {
+                      messageRefs.current.set(message.id, node);
+                    }}
                     className={`flex gap-3 ${isMine ? "justify-end" : ""}`}
                   >
                     {!isMine && (
@@ -714,13 +802,9 @@ export function ProjectCollaborationPanel({ project }: ProjectCollaborationPanel
                   No messages yet. Start the conversation.
                 </div>
               )}
-              {messages.length > 0 && filteredMessages.length === 0 && (
-                <div className="py-10 text-center text-sm text-muted-foreground">
-                  No messages match your search.
-                </div>
-              )}
             </div>
-          </ScrollArea>
+            </ScrollArea>
+          </div>
 
           {typingUsers.length > 0 && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -732,63 +816,33 @@ export function ProjectCollaborationPanel({ project }: ProjectCollaborationPanel
             </div>
           )}
 
-          <div className="min-w-0 space-y-3 rounded-xl border bg-muted/20 p-4">
-            <div className="space-y-2 rounded-xl border bg-background/80 p-3">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-medium">Most engaged developers</p>
-                <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
-                  Top 5
-                </Badge>
-              </div>
-              <div className="space-y-2">
-                {engagedDevelopers.length > 0 ? (
-                  engagedDevelopers.map(({ member, count }) => (
-                    <div key={member.user.id} className="flex items-center gap-3 rounded-lg border bg-muted/30 px-3 py-2">
-                      <Avatar className="h-8 w-8">
-                        <AvatarFallback className="text-xs">
-                          {member.user.firstName.charAt(0)}
-                          {member.user.lastName.charAt(0)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">
-                          {member.user.firstName} {member.user.lastName}
-                        </p>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {member.user.email}
-                        </p>
-                      </div>
-                      <Badge variant="secondary" className="shrink-0 text-[10px]">
-                        {count} msgs
-                      </Badge>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    No developer activity yet in this chat.
-                  </p>
-                )}
-              </div>
-            </div>
+          <button
+            type="button"
+            onPointerDown={startChatResize}
+            className="absolute bottom-2 right-2 h-5 w-5 cursor-nwse-resize rounded-md border border-border/60 bg-background/90 opacity-80 shadow-sm transition hover:opacity-100"
+            aria-label="Resize project chat"
+            title="Drag to resize chat height"
+          >
+            <div className="absolute bottom-1 right-1 h-1.5 w-1.5 border-r-2 border-t-2 border-muted-foreground" />
+          </button>
 
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <p className="text-sm font-medium">
-                  {conversationWith === PUBLIC_CHAT
-                    ? "Public project chat"
-                    : `Private chat with ${selectedMember?.user.firstName} ${selectedMember?.user.lastName}`}
+          <div className="min-w-0 space-y-3 rounded-2xl border border-border/70 bg-background/90 p-4 shadow-lg backdrop-blur-sm xl:absolute xl:right-4 xl:top-[7.25rem] xl:w-80">
+            <div className="mt-3 rounded-xl border bg-muted/20 p-3">
+              <p className="text-sm font-medium">
+                {conversationWith === PUBLIC_CHAT
+                  ? "Public project chat"
+                  : `Private chat with ${selectedMember?.user.firstName} ${selectedMember?.user.lastName}`}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {conversationWith === PUBLIC_CHAT
+                  ? "Visible to everyone connected to this project."
+                  : "Only you and this person can see this conversation."}
+              </p>
+              {conversationWith !== PUBLIC_CHAT && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Private messages also create an instant notification for the recipient.
                 </p>
-                <p className="text-xs text-muted-foreground">
-                  {conversationWith === PUBLIC_CHAT
-                    ? "Visible to everyone connected to this project."
-                    : "Only you and this person can see this conversation."}
-                </p>
-                {conversationWith !== PUBLIC_CHAT && (
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Private messages also create an instant notification for the recipient.
-                  </p>
-                )}
-              </div>
+              )}
             </div>
             <div className="relative">
               <div className="flex min-w-0 flex-col gap-2 sm:flex-row">
@@ -849,6 +903,76 @@ export function ProjectCollaborationPanel({ project }: ProjectCollaborationPanel
               )}
             </div>
           </div>
+
+          <Dialog open={chatFinderOpen} onOpenChange={setChatFinderOpen}>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Find in chat</DialogTitle>
+                <DialogDescription>
+                  Search messages, sender names, recipient names, and timestamps. Press Ctrl+F anytime while this chat is open.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3">
+                <Input
+                  autoFocus
+                  value={chatFinderQuery}
+                  onChange={(e) => setChatFinderQuery(e.target.value)}
+                  placeholder="Search inside chat..."
+                />
+                <div className="max-h-96 overflow-auto rounded-xl border bg-muted/10">
+                  {chatFinderQuery.trim() ? (
+                    chatFinderResults.length > 0 ? (
+                      <div className="space-y-2 p-3">
+                        {chatFinderResults.map((message) => (
+                          <button
+                            key={message.id}
+                            type="button"
+                            className="flex w-full items-start gap-3 rounded-xl border bg-background p-3 text-left transition hover:bg-muted/50"
+                            onClick={() => {
+                              setChatFinderOpen(false);
+                              window.setTimeout(() => {
+                                messageRefs.current.get(message.id)?.scrollIntoView({
+                                  behavior: "smooth",
+                                  block: "center",
+                                });
+                              }, 100);
+                            }}
+                          >
+                            <Avatar className="h-8 w-8">
+                              <AvatarFallback className="text-xs">
+                                {message.sender.firstName.charAt(0)}
+                                {message.sender.lastName.charAt(0)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                <span className="font-medium text-foreground">
+                                  {message.sender.firstName} {message.sender.lastName}
+                                </span>
+                                {message.recipient && (
+                                  <span>Private to {message.recipient.firstName}</span>
+                                )}
+                                <span>{format(parseISO(message.createdAt), "MMM d, h:mm a")}</span>
+                              </div>
+                              <p className="mt-1 line-clamp-2 text-sm">{message.content}</p>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="p-6 text-center text-sm text-muted-foreground">
+                        No chat results matched your search.
+                      </div>
+                    )
+                  ) : (
+                    <div className="p-6 text-center text-sm text-muted-foreground">
+                      Type to search the conversation.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
         </CardContent>
       </Card>
 
@@ -897,18 +1021,18 @@ export function ProjectCollaborationPanel({ project }: ProjectCollaborationPanel
                   value={meetingNotes}
                   onChange={(e) => setMeetingNotes(e.target.value)}
                   placeholder="Notes or agenda..."
-                  rows={4}
+                  rows={3}
                 />
               </div>
 
               {meetingLink && (
-                  <div className="max-w-full rounded-xl border bg-background p-3">
+                  <div className="max-w-[32rem] rounded-xl border bg-background p-3">
                     <div className="flex items-center gap-2 text-sm font-medium">
                       <Link2 className="h-4 w-4" />
                       Meeting link
                     </div>
                   <div className="mt-2 flex max-w-full flex-col gap-2 sm:flex-row">
-                    <Input value={meetingLink} readOnly />
+                    <Input value={meetingLink} readOnly className="truncate" />
                     <Button type="button" variant="outline" onClick={copyMeetingLink}>
                       <Copy className="mr-2 h-4 w-4" />
                       Copy
@@ -935,7 +1059,7 @@ export function ProjectCollaborationPanel({ project }: ProjectCollaborationPanel
               <Users className="h-4 w-4" />
               <p className="text-sm font-medium">Upcoming Meetings</p>
             </div>
-            <ScrollArea className="h-[220px] max-w-full rounded-lg border">
+            <ScrollArea className="h-[180px] max-w-full rounded-lg border">
               <div className="space-y-2 p-3">
                 {meetings.map((meeting) => (
                   <div key={meeting.id} className="rounded-xl border p-3">

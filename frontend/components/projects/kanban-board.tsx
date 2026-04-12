@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useData } from "@/lib/data-context";
 import { Button } from "@/components/ui/button";
@@ -39,6 +39,8 @@ export function KanbanBoard({ project, onTaskClick, onAddTask }: KanbanBoardProp
   const { addPanel, updatePanel, deletePanel, moveTask, reorderPanels } = useData();
   const isAdmin = user?.role === "admin";
   const [panelLayout, setPanelLayout] = useState<"horizontal" | "vertical">("horizontal");
+  const [overviewMode, setOverviewMode] = useState(false);
+  const [hoveredOverviewPanelId, setHoveredOverviewPanelId] = useState<string | null>(null);
   const [addingPanel, setAddingPanel] = useState(false);
   const [newPanelName, setNewPanelName] = useState("");
   const [editingPanelId, setEditingPanelId] = useState<string | null>(null);
@@ -47,17 +49,179 @@ export function KanbanBoard({ project, onTaskClick, onAddTask }: KanbanBoardProp
   const [draggedPanelId, setDraggedPanelId] = useState<string | null>(null);
   const [panelDropTargetId, setPanelDropTargetId] = useState<string | null>(null);
   const [panelOrder, setPanelOrder] = useState<string[]>([]);
+  const [panelScrollNode, setPanelScrollNode] = useState<HTMLDivElement | null>(null);
+  const [overviewTogglePulse, setOverviewTogglePulse] = useState(false);
+  const [overviewTransitionState, setOverviewTransitionState] = useState<"idle" | "enter" | "exit">("idle");
+  const panelItemRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
+  const scrollIdleTimerRef = useRef<number | null>(null);
+  const overviewHoverTimerRef = useRef<number | null>(null);
+  const overviewTogglePulseTimerRef = useRef<number | null>(null);
+  const overviewToggleDelayTimerRef = useRef<number | null>(null);
+  const overviewTransitionTimerRef = useRef<number | null>(null);
+  const panelScrollKey = `zentrixa:panel-scroll:${project.id}:${panelLayout}`;
 
   useEffect(() => {
     setPanelOrder([...project.panels].sort((a, b) => a.order - b.order).map((panel) => panel.id));
   }, [project.id, project.panels]);
 
+  useLayoutEffect(() => {
+    const el = panelScrollNode;
+    if (!el || typeof window === "undefined") return;
+
+    const raw = window.localStorage.getItem(panelScrollKey);
+    if (!raw) return;
+
+    const [leftRaw, topRaw] = raw.split(":");
+    const left = Number(leftRaw);
+    const top = Number(topRaw);
+
+    window.requestAnimationFrame(() => {
+      el.scrollTo({
+        left: Number.isNaN(left) ? 0 : left,
+        top: Number.isNaN(top) ? 0 : top,
+        behavior: "auto",
+      });
+    });
+  }, [panelLayout, panelScrollKey, panelScrollNode]);
+
+  useEffect(() => {
+    const el = panelScrollNode;
+    if (!el || typeof window === "undefined") return;
+
+    const persist = () => {
+      if (scrollIdleTimerRef.current !== null) {
+        window.clearTimeout(scrollIdleTimerRef.current);
+      }
+
+      scrollIdleTimerRef.current = window.setTimeout(() => {
+        window.localStorage.setItem(panelScrollKey, `${el.scrollLeft}:${el.scrollTop}`);
+      }, 160);
+    };
+
+    persist();
+    el.addEventListener("scroll", persist, { passive: true });
+
+    return () => {
+      el.removeEventListener("scroll", persist);
+      if (scrollIdleTimerRef.current !== null) {
+        window.clearTimeout(scrollIdleTimerRef.current);
+        scrollIdleTimerRef.current = null;
+      }
+      window.localStorage.setItem(panelScrollKey, `${el.scrollLeft}:${el.scrollTop}`);
+    };
+  }, [panelLayout, panelScrollKey, panelScrollNode]);
+
   const panelMap = new Map(project.panels.map((panel) => [panel.id, panel] as const));
   const sortedPanels = panelOrder.length
     ? panelOrder.map((panelId) => panelMap.get(panelId)).filter((panel): panel is Panel => Boolean(panel))
     : [...project.panels].sort((a, b) => a.order - b.order);
+  const overviewPanelHeight =
+    panelLayout === "horizontal" && overviewMode
+      ? Math.max(...sortedPanels.map((panel) => panel.height ?? 364), 260)
+      : null;
+
+  useEffect(() => {
+    if (panelLayout === "vertical" && overviewMode) {
+      setOverviewMode(false);
+    }
+  }, [overviewMode, panelLayout]);
+
+  useEffect(() => {
+    return () => {
+      if (overviewHoverTimerRef.current !== null) {
+        window.clearTimeout(overviewHoverTimerRef.current);
+      }
+      if (overviewTogglePulseTimerRef.current !== null) {
+        window.clearTimeout(overviewTogglePulseTimerRef.current);
+      }
+      if (overviewToggleDelayTimerRef.current !== null) {
+        window.clearTimeout(overviewToggleDelayTimerRef.current);
+      }
+      if (overviewTransitionTimerRef.current !== null) {
+        window.clearTimeout(overviewTransitionTimerRef.current);
+      }
+    };
+  }, []);
 
   const canModifyTask = (task: Task) => Boolean(user && task);
+
+  const getPanelNode = (panelId: string) => panelItemRefs.current.get(panelId) || null;
+
+  const scrollToPanel = (panelId: string, behavior: ScrollBehavior = "smooth") => {
+    const container = panelScrollNode;
+    const target = getPanelNode(panelId);
+    if (!container || !target) return;
+
+    const nextLeft = Math.max(
+      0,
+      target.offsetLeft - (container.clientWidth - target.offsetWidth) / 2
+    );
+
+    container.scrollTo({
+      left: nextLeft,
+      top: container.scrollTop,
+      behavior,
+    });
+
+    window.localStorage.setItem(panelScrollKey, `${nextLeft}:${container.scrollTop}`);
+  };
+
+  const getCurrentPanelIndex = () => {
+    const container = panelScrollNode;
+    if (!container || sortedPanels.length === 0) return 0;
+
+    const centerX = container.scrollLeft + container.clientWidth / 2;
+    let closestIndex = 0;
+    let smallestDistance = Number.POSITIVE_INFINITY;
+
+    sortedPanels.forEach((panel, index) => {
+      const node = getPanelNode(panel.id);
+      if (!node) return;
+      const nodeCenter = node.offsetLeft + node.offsetWidth / 2;
+      const distance = Math.abs(nodeCenter - centerX);
+      if (distance < smallestDistance) {
+        smallestDistance = distance;
+        closestIndex = index;
+      }
+    });
+
+    return closestIndex;
+  };
+
+  const scrollByPanel = (direction: -1 | 1) => {
+    const currentIndex = getCurrentPanelIndex();
+    const nextIndex = Math.min(sortedPanels.length - 1, Math.max(0, currentIndex + direction));
+    const nextPanel = sortedPanels[nextIndex];
+    if (!nextPanel) return;
+    scrollToPanel(nextPanel.id);
+  };
+
+  useEffect(() => {
+    const handleKeyboardScroll = (event: KeyboardEvent) => {
+      if (panelLayout !== "horizontal" || !panelScrollNode) return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        scrollByPanel(-1);
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        scrollByPanel(1);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyboardScroll);
+    return () => window.removeEventListener("keydown", handleKeyboardScroll);
+  }, [panelLayout, panelScrollNode, sortedPanels]);
 
   const handleAddPanel = async () => {
     if (!newPanelName.trim()) return;
@@ -148,45 +312,162 @@ export function KanbanBoard({ project, onTaskClick, onAddTask }: KanbanBoardProp
       case "medium":
         return "border-l-yellow-500";
       default:
-        return "border-l-blue-500";
+        return "border-l-amber-700";
     }
   };
 
+  const isCompactOverview = panelLayout === "horizontal" && overviewMode;
+  const exitOverview = () => setOverviewMode(false);
+
+  const toggleOverviewMode = () => {
+    if (overviewToggleDelayTimerRef.current !== null) {
+      window.clearTimeout(overviewToggleDelayTimerRef.current);
+      overviewToggleDelayTimerRef.current = null;
+    }
+
+    setHoveredOverviewPanelId(null);
+    setOverviewTogglePulse(true);
+
+    if (overviewTogglePulseTimerRef.current !== null) {
+      window.clearTimeout(overviewTogglePulseTimerRef.current);
+    }
+    if (overviewTransitionTimerRef.current !== null) {
+      window.clearTimeout(overviewTransitionTimerRef.current);
+    }
+
+    overviewTogglePulseTimerRef.current = window.setTimeout(() => {
+      setOverviewTogglePulse(false);
+      overviewTogglePulseTimerRef.current = null;
+    }, 420);
+
+    overviewToggleDelayTimerRef.current = window.setTimeout(() => {
+      setOverviewMode((current) => {
+        setOverviewTransitionState(current ? "exit" : "enter");
+        return !current;
+      });
+
+      overviewTransitionTimerRef.current = window.setTimeout(() => {
+        setOverviewTransitionState("idle");
+        overviewTransitionTimerRef.current = null;
+      }, 980);
+
+      overviewToggleDelayTimerRef.current = null;
+    }, 220);
+  };
+
+  const handleOverviewHoverChange = (panelId: string | null) => {
+    if (overviewHoverTimerRef.current !== null) {
+      window.clearTimeout(overviewHoverTimerRef.current);
+      overviewHoverTimerRef.current = null;
+    }
+
+    overviewHoverTimerRef.current = window.setTimeout(() => {
+      setHoveredOverviewPanelId(panelId);
+      overviewHoverTimerRef.current = null;
+    }, panelId ? 235 : 415);
+  };
+
+  useEffect(() => {
+    if (!overviewMode) {
+      setHoveredOverviewPanelId(null);
+    }
+  }, [overviewMode]);
+
   return (
     <div className="max-w-full space-y-3 overflow-hidden">
-      <div className="flex items-center justify-end gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          size="icon-sm"
-          onClick={() =>
-            setPanelLayout((current) => (current === "horizontal" ? "vertical" : "horizontal"))
-          }
-          className="shrink-0 rounded-full"
-          title={panelLayout === "horizontal" ? "Switch to vertical scroll" : "Switch to horizontal scroll"}
-        >
-          {panelLayout === "horizontal" ? (
-            <Rows3 className="h-4 w-4" />
-          ) : (
-            <Columns3 className="h-4 w-4" />
-          )}
-        </Button>
-        <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-          {panelLayout === "horizontal" ? "Horizontal" : "Vertical"}
-        </span>
+      <div className="relative flex flex-wrap items-center gap-2">
+        {panelLayout === "horizontal" && (
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => scrollByPanel(-1)}
+              className="rounded-full"
+              title="Scroll left one panel"
+            >
+              ←
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => scrollByPanel(1)}
+              className="rounded-full"
+              title="Scroll right one panel"
+            >
+              →
+            </Button>
+          </div>
+        )}
+        {panelLayout === "horizontal" && (
+          <Button
+            type="button"
+            variant={overviewMode ? "default" : "outline"}
+            size="sm"
+            onClick={toggleOverviewMode}
+            aria-pressed={overviewMode}
+            className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full shadow-sm transition-[transform,background-color,color,border-color,box-shadow,opacity] duration-1000 ease-[cubic-bezier(0.12,0.86,0.18,1)] motion-safe:hover:scale-[1.04] motion-safe:hover:shadow-md motion-safe:active:scale-[0.98] ${
+              overviewTogglePulse ? "scale-[1.03] shadow-md ring-2 ring-primary/20" : ""
+            }`}
+            title={overviewMode ? "Exit overview mode" : "Enter overview mode"}
+          >
+            {overviewMode ? "Exit Overview" : "Overview"}
+          </Button>
+        )}
+        <div className="ml-auto flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-sm"
+            onClick={() =>
+              setPanelLayout((current) => (current === "horizontal" ? "vertical" : "horizontal"))
+            }
+            className="shrink-0 rounded-full"
+            title={panelLayout === "horizontal" ? "Switch to vertical scroll" : "Switch to horizontal scroll"}
+          >
+            {panelLayout === "horizontal" ? (
+              <Rows3 className="h-4 w-4" />
+            ) : (
+              <Columns3 className="h-4 w-4" />
+            )}
+          </Button>
+          <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+            {panelLayout === "horizontal" ? "Horizontal" : "Vertical"}
+          </span>
+        </div>
       </div>
 
       {panelLayout === "horizontal" ? (
-        <div className="w-full min-w-0 max-w-full overflow-hidden">
-          <div className="w-full min-w-0 overflow-x-auto overflow-y-hidden pb-3 [scrollbar-gutter:stable_both-edges] [scroll-snap-type:x_mandatory]">
-            <div className="flex w-max min-w-full items-start gap-4 pr-2">
+        <div
+          className="w-full min-w-0 max-w-full overflow-hidden"
+          onClick={(event) => {
+            if (!isCompactOverview || event.target !== event.currentTarget) return;
+            exitOverview();
+          }}
+        >
+          <div
+            ref={setPanelScrollNode}
+            className={`w-full min-w-0 overflow-x-auto overflow-y-hidden pb-2 [scrollbar-gutter:stable_both-edges] [scroll-snap-type:x_mandatory] scroll-smooth ${
+              overviewMode ? "pt-0" : ""
+            }`}
+          >
+          <div className={`flex w-max min-w-full items-start pr-0 ${overviewMode ? "gap-[2px]" : "gap-4"}`}>
               {sortedPanels.map((panel) => (
-                <PanelColumn
-                  key={panel.id}
+              <PanelColumn
+                key={panel.id}
+                panelRef={(node) => {
+                  panelItemRefs.current.set(panel.id, node);
+                }}
                   panel={panel}
                   layout={panelLayout}
+                  overviewMode={overviewMode}
+                  overviewTransitionState={overviewTransitionState}
                   onTaskClick={onTaskClick}
                   onAddTask={onAddTask}
+                  overviewPanelHeight={overviewPanelHeight}
+                  hoveredOverviewPanelId={hoveredOverviewPanelId}
+                  onOverviewHoverChange={handleOverviewHoverChange}
                   onEdit={() => {
                     setEditingPanelId(panel.id);
                     setEditingPanelName(panel.name);
@@ -232,6 +513,15 @@ export function KanbanBoard({ project, onTaskClick, onAddTask }: KanbanBoardProp
                     });
                   }}
                   isPanelDropTarget={panelDropTargetId === panel.id}
+                  onOverviewFocus={() => {
+                    if (!overviewMode) return;
+                    setHoveredOverviewPanelId(panel.id);
+                    window.requestAnimationFrame(() => {
+                      window.requestAnimationFrame(() => {
+                        scrollToPanel(panel.id);
+                      });
+                    });
+                  }}
                   onResize={async (dimensions) => {
                     await updatePanel(project.id, panel.id, dimensions);
                   }}
@@ -282,15 +572,23 @@ export function KanbanBoard({ project, onTaskClick, onAddTask }: KanbanBoardProp
           </div>
         </div>
       ) : (
-        <div className="h-[72vh] w-full overflow-y-auto overflow-x-hidden pr-1">
+        <div ref={setPanelScrollNode} className="brown-scrollbar h-[72vh] w-full overflow-y-auto overflow-x-hidden pr-1">
           <div className="flex flex-col items-stretch gap-4 pb-4">
             {sortedPanels.map((panel) => (
               <PanelColumn
                 key={panel.id}
+                panelRef={(node) => {
+                  panelItemRefs.current.set(panel.id, node);
+                }}
                 panel={panel}
                 layout={panelLayout}
+                overviewMode={false}
+                overviewTransitionState={overviewTransitionState}
                 onTaskClick={onTaskClick}
                 onAddTask={onAddTask}
+                overviewPanelHeight={overviewPanelHeight}
+                hoveredOverviewPanelId={hoveredOverviewPanelId}
+                onOverviewHoverChange={handleOverviewHoverChange}
                 onEdit={() => {
                   setEditingPanelId(panel.id);
                   setEditingPanelName(panel.name);
@@ -336,6 +634,7 @@ export function KanbanBoard({ project, onTaskClick, onAddTask }: KanbanBoardProp
                   });
                 }}
                 isPanelDropTarget={panelDropTargetId === panel.id}
+                onOverviewFocus={() => {}}
                 onResize={async (dimensions) => {
                   await updatePanel(project.id, panel.id, dimensions);
                 }}
@@ -387,7 +686,13 @@ export function KanbanBoard({ project, onTaskClick, onAddTask }: KanbanBoardProp
 }
 
 interface PanelColumnProps {
+  panelRef: (node: HTMLDivElement | null) => void;
   panel: Panel;
+  overviewMode: boolean;
+  overviewTransitionState: "idle" | "enter" | "exit";
+  overviewPanelHeight: number | null;
+  hoveredOverviewPanelId: string | null;
+  onOverviewHoverChange: (panelId: string | null) => void;
   onTaskClick: (task: Task) => void;
   onAddTask: (panelId: string) => void;
   onEdit: () => void;
@@ -408,12 +713,16 @@ interface PanelColumnProps {
   onPanelDragOver: (event: React.DragEvent<HTMLDivElement>) => void;
   onPanelDrop: () => void;
   isPanelDropTarget: boolean;
+  onOverviewFocus: () => void;
   onResize: (dimensions: { width: number; height: number }) => void;
   layout: "horizontal" | "vertical";
 }
 
 function PanelColumn({
+  panelRef,
   panel,
+  overviewMode,
+  overviewTransitionState,
   onTaskClick,
   onAddTask,
   onEdit,
@@ -434,10 +743,19 @@ function PanelColumn({
   onPanelDragOver,
   onPanelDrop,
   isPanelDropTarget,
+  onOverviewFocus,
   onResize,
   layout,
+  overviewPanelHeight,
+  hoveredOverviewPanelId,
+  onOverviewHoverChange,
 }: PanelColumnProps) {
-  const panelRef = useRef<HTMLDivElement | null>(null);
+  const panelCardRef = useRef<HTMLDivElement | null>(null);
+  const isCompactOverview = overviewMode && layout === "horizontal";
+  const isOverviewEntering = overviewTransitionState === "enter";
+  const isOverviewExpanded = isCompactOverview && hoveredOverviewPanelId === panel.id;
+  const overviewPanelScale = isCompactOverview ? "shadow-2xl" : "";
+  const commonOverviewHeight = overviewPanelHeight ?? Math.max(panel.height ?? 364, 260);
   const resizeStateRef = useRef<{
     startX: number;
     startY: number;
@@ -450,7 +768,7 @@ function PanelColumn({
   const [isResizing, setIsResizing] = useState(false);
   const [isSavingSize, setIsSavingSize] = useState(false);
 
-  const currentHeight = draftSize?.height ?? panel.height ?? 520;
+    const currentHeight = draftSize?.height ?? panel.height ?? 364;
   const horizontalMinWidth = "calc((100% - 3rem) / 4)";
   const horizontalMaxWidth = "calc((100% - 1rem) / 2)";
   const horizontalBaseWidth = draftSize?.width ?? panel.width;
@@ -469,13 +787,13 @@ function PanelColumn({
   const clampMin = (value: number, min: number) => Math.max(value, min);
 
   const startResize = (event: React.PointerEvent<HTMLButtonElement>) => {
-    if (!showPanelActions || layout !== "horizontal" || !panelRef.current) return;
+    if (!showPanelActions || layout !== "horizontal" || !panelCardRef.current) return;
 
     event.preventDefault();
     event.stopPropagation();
 
-    const rect = panelRef.current.getBoundingClientRect();
-    const railWidth = panelRef.current.parentElement?.parentElement?.clientWidth || rect.width * 4;
+    const rect = panelCardRef.current.getBoundingClientRect();
+    const railWidth = panelCardRef.current.parentElement?.parentElement?.clientWidth || rect.width * 4;
     const minResizeWidth = Math.max(Math.floor((railWidth - 48) / 4), 240);
     const maxResizeWidth = Math.max(Math.floor((railWidth - 16) / 2), minResizeWidth);
     resizeStateRef.current = {
@@ -542,25 +860,59 @@ function PanelColumn({
 
   return (
       <Card
-      ref={panelRef}
-      className={`group relative shrink-0 bg-muted/30 text-[0.9em] ${layout === "horizontal" ? "snap-start" : ""} ${
+      ref={(node) => {
+        panelCardRef.current = node;
+        panelRef(node);
+      }}
+      className={`group relative flex flex-col shrink-0 overflow-hidden bg-muted/30 text-[0.9em] ${layout === "horizontal" ? "snap-start" : ""} ${
         isResizing || isSavingSize
           ? "transition-none"
-          : "transition-[width,height,transform,box-shadow] duration-200 ease-out"
+          : "transform-gpu transition-[width,height,transform,box-shadow,opacity] duration-800 ease-[cubic-bezier(0.16,1,0.3,1)]"
       } ${
         isPanelDropTarget ? "ring-2 ring-primary/60 ring-offset-2" : ""
-      } ${draggedPanelStyle(showPanelActions)}`}
+      } ${draggedPanelStyle(showPanelActions)} ${overviewPanelScale}`}
       style={{
         width:
-          layout === "horizontal"
+          isOverviewExpanded
+            ? "clamp(16rem, 24vw, 22rem)"
+            : isCompactOverview
+            ? "clamp(4.5rem, 5vw, 5.5rem)"
+            : layout === "horizontal"
             ? `clamp(${horizontalMinWidth}, ${horizontalWidthValue}, ${horizontalMaxWidth})`
             : "100%",
-        height: currentHeight,
-        minWidth: layout === "horizontal" ? horizontalMinWidth : 240,
-        maxWidth: layout === "horizontal" ? horizontalMaxWidth : "100%",
-        minHeight: 320,
+        height: isCompactOverview ? commonOverviewHeight : currentHeight,
+        minWidth: isOverviewExpanded
+          ? "16rem"
+          : isCompactOverview
+            ? "4.5rem"
+            : layout === "horizontal"
+              ? horizontalMinWidth
+              : 240,
+        maxWidth: isOverviewExpanded
+          ? "22rem"
+          : isCompactOverview
+            ? "5.5rem"
+            : layout === "horizontal"
+              ? horizontalMaxWidth
+              : "100%",
+        minHeight: isCompactOverview ? commonOverviewHeight : 260,
         flex: layout === "horizontal" ? "0 0 auto" : "0 0 auto",
         willChange: isResizing ? "width, height" : undefined,
+      }}
+      onClick={(event) => {
+        if (isCompactOverview) {
+          onOverviewFocus();
+        }
+      }}
+      onPointerEnter={() => {
+        if (isCompactOverview) {
+          onOverviewHoverChange(panel.id);
+        }
+      }}
+      onPointerLeave={() => {
+        if (isCompactOverview) {
+          onOverviewHoverChange(null);
+        }
       }}
       onDragOver={(event) => {
         event.preventDefault();
@@ -577,10 +929,22 @@ function PanelColumn({
       }}
     >
       <CardHeader
-        className="relative p-3 pb-2"
-        title={showPanelActions ? "Grab the dotted handle to reorder" : undefined}
+        className={`relative p-3 ${isOverviewExpanded ? "pb-2" : isCompactOverview ? "min-h-[11rem] pb-3" : "pb-2"}`}
+        title={showPanelActions && !isCompactOverview ? "Grab the dotted handle to reorder" : undefined}
       >
-        {showPanelActions ? (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-3 text-center">
+          {isCompactOverview ? (
+            <span
+              className={`absolute left-1/2 top-1/2 block w-full -translate-x-1/2 -translate-y-1/2 text-center text-[1.02rem] font-black leading-none tracking-[0.18em] text-foreground uppercase drop-shadow-sm transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] [writing-mode:vertical-rl] [text-orientation:mixed] rotate-180 ${
+                isOverviewEntering || isCompactOverview ? "opacity-100 scale-100" : "opacity-0 scale-[0.96]"
+              }`}
+            >
+              {panel.name}
+            </span>
+          ) : null}
+        </div>
+
+        {showPanelActions && !isCompactOverview ? (
           <button
             type="button"
             className="absolute left-1/2 top-2 z-10 flex h-5 w-14 -translate-x-1/2 items-center justify-center gap-1 rounded-full border border-border/70 bg-background/90 text-muted-foreground opacity-90 shadow-sm transition hover:bg-muted/70 hover:text-foreground"
@@ -600,7 +964,11 @@ function PanelColumn({
           </button>
         ) : null}
 
-        <div className="flex items-center gap-2">
+        <div
+          className={`flex items-center gap-2 transition-none ${
+            isCompactOverview ? "pointer-events-none opacity-0 -translate-y-2 scale-[0.96]" : "opacity-100 translate-y-0 scale-100"
+          }`}
+        >
           {editingPanelId === panel.id ? (
             <Input
               value={editingPanelName}
@@ -613,15 +981,15 @@ function PanelColumn({
               className="h-7"
             />
           ) : (
-            <CardTitle className="flex min-w-0 items-center gap-2 text-[0.8rem] font-medium">
+            <CardTitle className={`flex min-w-0 items-center gap-2 font-medium transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] ${isOverviewEntering ? "opacity-0 -translate-y-2 scale-[0.96]" : "opacity-100 translate-y-0 scale-100"} ${overviewMode ? "text-[0.95rem]" : "text-[0.8rem]"}`}>
               <span className="truncate">{panel.name}</span>
               <Badge variant="secondary" className="text-[0.68rem]">
                 {panel.tasks.length}
               </Badge>
             </CardTitle>
           )}
-          <div className="ml-auto flex items-center gap-1">
-            {showPanelActions && (
+          <div className={`ml-auto flex items-center gap-1 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] ${isOverviewEntering ? "opacity-0 translate-y-2 scale-[0.96]" : "opacity-100 translate-y-0 scale-100"}`}>
+            {showPanelActions && !isCompactOverview && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" className="h-6 w-6">
@@ -643,32 +1011,44 @@ function PanelColumn({
         </div>
       </CardHeader>
 
-      <CardContent className="space-y-2 p-2">
-        {panel.tasks
-          .sort((a, b) => a.order - b.order)
-          .map((task) => (
-            <TaskCard
-              key={task.id}
-              task={task}
-              onClick={() => onTaskClick(task)}
-              onDragStart={() => onDragStart(task)}
-              canModifyTask={canModifyTask(task)}
-              getPriorityColor={getPriorityColor}
-            />
-          ))}
-        {showAddTask && (
-          <Button
-            variant="ghost"
-            className="w-full justify-start text-[0.85rem] text-muted-foreground"
-            onClick={() => onAddTask(panel.id)}
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Add Task
-          </Button>
-        )}
-      </CardContent>
+      {(!isCompactOverview || isOverviewExpanded || overviewMode) && (
+        <CardContent
+          className={`flex min-h-0 flex-1 flex-col gap-2 p-2 transition-[max-height,opacity,transform] duration-650 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+            isCompactOverview
+              ? isOverviewExpanded
+                ? "max-h-[calc(100%-4.75rem)] opacity-100 translate-y-0"
+                : "max-h-0 overflow-hidden opacity-0 translate-y-2 pointer-events-none"
+              : ""
+          }`}
+        >
+          <div className="brown-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto pr-1 [scrollbar-gutter:stable]">
+            {panel.tasks
+              .sort((a, b) => a.order - b.order)
+              .map((task) => (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  onClick={() => onTaskClick(task)}
+                  onDragStart={() => onDragStart(task)}
+                  canModifyTask={canModifyTask(task)}
+                  getPriorityColor={getPriorityColor}
+                />
+              ))}
+          </div>
+          {showAddTask && (
+            <Button
+              variant="ghost"
+              className="w-full justify-start text-[0.85rem] text-muted-foreground"
+              onClick={() => onAddTask(panel.id)}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Add Task
+            </Button>
+          )}
+        </CardContent>
+      )}
 
-      {showPanelActions && layout === "horizontal" && (
+      {showPanelActions && layout === "horizontal" && !isCompactOverview && (
         <button
           type="button"
           onPointerDown={startResize}

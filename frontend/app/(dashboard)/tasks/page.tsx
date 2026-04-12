@@ -35,7 +35,7 @@ export default function TasksPage() {
       case "medium":
         return "bg-yellow-500";
       default:
-        return "bg-blue-500";
+        return "bg-amber-700";
     }
   };
 
@@ -44,7 +44,7 @@ export default function TasksPage() {
       case "done":
         return <Badge className="bg-green-500">Done</Badge>;
       case "in_progress":
-        return <Badge className="bg-blue-500">In Progress</Badge>;
+        return <Badge className="bg-amber-700">In Progress</Badge>;
       case "review":
         return <Badge className="bg-purple-500">Review</Badge>;
       default:
@@ -92,7 +92,7 @@ export default function TasksPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="space-y-2">
+          <div className="space-y-2 brown-scrollbar">
             {latestTasks.map((task) => (
               <div
                 key={task.id}

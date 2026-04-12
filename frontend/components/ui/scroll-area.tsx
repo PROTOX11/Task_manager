@@ -34,11 +34,11 @@ function ScrollBar({
   ...props
 }: React.ComponentProps<typeof ScrollAreaPrimitive.ScrollAreaScrollbar>) {
   return (
-    <ScrollAreaPrimitive.ScrollAreaScrollbar
+      <ScrollAreaPrimitive.ScrollAreaScrollbar
       data-slot="scroll-area-scrollbar"
       orientation={orientation}
       className={cn(
-        'flex touch-none p-px transition-colors select-none',
+        'brown-scrollbar flex touch-none p-px transition-colors select-none',
         orientation === 'vertical' &&
           'h-full w-2.5 border-l border-l-transparent',
         orientation === 'horizontal' &&
@@ -49,7 +49,7 @@ function ScrollBar({
     >
       <ScrollAreaPrimitive.ScrollAreaThumb
         data-slot="scroll-area-thumb"
-        className="bg-muted-foreground/35 relative flex-1 rounded-full transition-colors hover:bg-muted-foreground/55"
+        className="relative flex-1 rounded-full bg-[linear-gradient(180deg,rgba(136,95,54,0.9),rgba(94,63,35,0.9))] transition-colors hover:bg-[linear-gradient(180deg,rgba(154,111,66,0.96),rgba(109,75,43,0.96))]"
       />
     </ScrollAreaPrimitive.ScrollAreaScrollbar>
   )

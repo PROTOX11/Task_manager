@@ -1,31 +1,45 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Field, FieldLabel, FieldDescription } from "@/components/ui/field";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { User, Mail, Calendar, Shield, Loader2 } from "lucide-react";
+import { User, Mail, Calendar, Shield, Loader2, Camera } from "lucide-react";
 import { format, parseISO } from "date-fns";
 
 export default function ProfilePage() {
   const { user, updateProfile } = useAuth();
   const [firstName, setFirstName] = useState(user?.firstName || "");
   const [lastName, setLastName] = useState(user?.lastName || "");
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!avatarFile) {
+      setAvatarPreview(null);
+      return;
+    }
+
+    const preview = URL.createObjectURL(avatarFile);
+    setAvatarPreview(preview);
+    return () => URL.revokeObjectURL(preview);
+  }, [avatarFile]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
     try {
-      await updateProfile({ firstName, lastName });
+      await updateProfile({ firstName, lastName, avatarFile });
       toast.success("Profile updated successfully!");
+      setAvatarFile(null);
     } catch {
       toast.error("Failed to update profile");
     } finally {
@@ -51,11 +65,26 @@ export default function ProfilePage() {
       <Card>
         <CardHeader>
           <div className="flex items-center gap-4">
-            <Avatar className="h-20 w-20">
-              <AvatarFallback className="text-2xl">
-                {getInitials(user.firstName, user.lastName)}
-              </AvatarFallback>
-            </Avatar>
+            <div className="relative">
+              <Avatar className="h-20 w-20">
+                {avatarPreview || user.avatar ? (
+                  <AvatarImage src={avatarPreview || user.avatar} alt={`${user.firstName} ${user.lastName}`} />
+                ) : null}
+                <AvatarFallback className="text-2xl">
+                  {getInitials(user.firstName, user.lastName)}
+                </AvatarFallback>
+              </Avatar>
+              <label className="absolute -bottom-1 -right-1 inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border bg-background shadow-sm transition hover:bg-muted">
+                <Camera className="h-4 w-4" />
+                <span className="sr-only">Upload profile picture</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(event) => setAvatarFile(event.target.files?.[0] || null)}
+                />
+              </label>
+            </div>
             <div>
               <CardTitle className="text-xl">
                 {user.firstName} {user.lastName}
@@ -116,6 +145,27 @@ export default function ProfilePage() {
               <FieldDescription>
                 Email address cannot be changed
               </FieldDescription>
+            </Field>
+
+            <Field>
+              <FieldLabel>Profile Picture</FieldLabel>
+              <div className="flex items-center gap-3">
+                <Button type="button" variant="outline" asChild>
+                  <label className="cursor-pointer">
+                    <Camera className="mr-2 h-4 w-4" />
+                    Choose Image
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(event) => setAvatarFile(event.target.files?.[0] || null)}
+                    />
+                  </label>
+                </Button>
+                <FieldDescription>
+                  PNG or JPG. Your profile picture updates for both admin and developer.
+                </FieldDescription>
+              </div>
             </Field>
 
             <Separator />

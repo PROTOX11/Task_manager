@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { Skeleton } from "boneyard-js/react";
 import { useData } from "@/lib/data-context";
 import { KanbanBoard } from "@/components/projects/kanban-board";
 import { ProjectHeader } from "@/components/projects/project-header";
@@ -63,27 +64,29 @@ export default function ProjectPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <ProjectHeader project={project} />
-      <KanbanBoard
-        project={project}
-        onTaskClick={(task) => setSelectedTaskId(task.id)}
-        onAddTask={setCreateTaskPanelId}
-      />
+    <Skeleton name="project-page" loading={false}>
+      <div className="space-y-6">
+        <ProjectHeader project={project} />
+        <KanbanBoard
+          project={project}
+          onTaskClick={(task) => setSelectedTaskId(task.id)}
+          onAddTask={setCreateTaskPanelId}
+        />
 
-      <ProjectCollaborationPanel project={project} />
+        <ProjectCollaborationPanel project={project} />
 
-      <TaskDialog
-        task={selectedTask}
-        project={project}
-        onClose={() => setSelectedTaskId(null)}
-      />
+        <TaskDialog
+          task={selectedTask}
+          project={project}
+          onClose={() => setSelectedTaskId(null)}
+        />
 
-      <CreateTaskDialog
-        projectId={project.id}
-        panelId={createTaskPanelId}
-        onClose={() => setCreateTaskPanelId(null)}
-      />
-    </div>
+        <CreateTaskDialog
+          projectId={project.id}
+          panelId={createTaskPanelId}
+          onClose={() => setCreateTaskPanelId(null)}
+        />
+      </div>
+    </Skeleton>
   );
 }

@@ -27,10 +27,32 @@ export default function DashboardPage() {
   const [selectedFilter, setSelectedFilter] = useState<DashboardFilter>("all");
 
   const myTasks = getMyTasks();
-  const completedTasks = myTasks.filter((t) => t.status === "done").length;
-  const pendingTasks = myTasks.filter((t) => t.status !== "done").length;
+  const isTaskInFinalPanel = (task: (typeof myTasks)[number]) => {
+    const project = projects.find((currentProject) => currentProject.id === task.projectId);
+    if (!project) return false;
+    const finalPanel = [...project.panels].sort((a, b) => a.order - b.order).at(-1);
+    return finalPanel ? finalPanel.id === task.panelId : false;
+  };
+
+  const isCompletedInFinalPanel = (task: (typeof myTasks)[number]) =>
+    task.status === "done" && isTaskInFinalPanel(task);
+
+  const getTaskProgressPercent = (task: (typeof myTasks)[number]) => {
+    const project = projects.find((currentProject) => currentProject.id === task.projectId);
+    if (!project) return 0;
+
+    const orderedPanels = [...project.panels].sort((a, b) => a.order - b.order);
+    const panelIndex = orderedPanels.findIndex((panel) => panel.id === task.panelId);
+    if (panelIndex < 0) return 0;
+
+    if (orderedPanels.length <= 1) return 0;
+    return Math.round((panelIndex / (orderedPanels.length - 1)) * 100);
+  };
+
+  const completedTasks = myTasks.filter((t) => isCompletedInFinalPanel(t)).length;
+  const pendingTasks = myTasks.filter((t) => !isCompletedInFinalPanel(t)).length;
   const overdueTasks = myTasks.filter(
-    (t) => t.dueDate && isPast(parseISO(t.dueDate)) && t.status !== "done"
+    (t) => t.dueDate && isPast(parseISO(t.dueDate)) && !isCompletedInFinalPanel(t)
   ).length;
 
   const activeProjects = projects.filter((p) => p.status === "active").length;
@@ -45,12 +67,12 @@ export default function DashboardPage() {
   const filteredTasks = useMemo(() => {
     switch (selectedFilter) {
       case "completed":
-        return myTasks.filter((task) => task.status === "done");
+        return myTasks.filter((task) => isCompletedInFinalPanel(task));
       case "pending":
-        return myTasks.filter((task) => task.status !== "done");
+        return myTasks.filter((task) => !isCompletedInFinalPanel(task));
       case "overdue":
         return myTasks.filter(
-          (task) => task.dueDate && isPast(parseISO(task.dueDate)) && task.status !== "done"
+          (task) => task.dueDate && isPast(parseISO(task.dueDate)) && !isCompletedInFinalPanel(task)
         );
       case "my-tasks":
       case "all":
@@ -73,7 +95,7 @@ export default function DashboardPage() {
       case "overdue":
         return "Overdue tasks";
       default:
-        return "All projects and tasks";
+        return null;
     }
   }, [selectedFilter]);
 
@@ -82,8 +104,8 @@ export default function DashboardPage() {
       title: "Total Projects",
       value: projects.length,
       icon: FolderKanban,
-      color: "text-blue-500",
-      bgColor: "bg-blue-500/10",
+      color: "text-amber-800",
+      bgColor: "bg-amber-800/10",
     },
     {
       title: "Active Projects",
@@ -122,11 +144,6 @@ export default function DashboardPage() {
     },
   ];
 
-  const recentTasks = myTasks
-    .filter((t) => t.status !== "done")
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, 5);
-
   const getPriorityColor = (priority: string) => {
     switch (priority) {
       case "urgent":
@@ -136,7 +153,7 @@ export default function DashboardPage() {
       case "medium":
         return "bg-yellow-500";
       default:
-        return "bg-blue-500";
+        return "bg-amber-700";
     }
   };
 
@@ -221,7 +238,7 @@ export default function DashboardPage() {
               <CardDescription>Your active projects and progress</CardDescription>
             </div>
             <div className="flex items-center gap-2">
-              <Badge variant="outline">{filterLabel}</Badge>
+              {filterLabel && <Badge variant="outline">{filterLabel}</Badge>}
               {selectedFilter !== "all" && (
                 <Button variant="ghost" size="sm" onClick={() => setSelectedFilter("all")}>
                   Clear
@@ -296,40 +313,45 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {filteredTasks
-              .filter((task) => task.status !== "done" || selectedFilter === "completed")
+              .filter((task) => selectedFilter === "completed" || !isCompletedInFinalPanel(task))
               .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
               .slice(0, 5)
               .map((task) => (
-              <div
-                key={task.id}
-                className="flex items-center gap-3 rounded-lg border p-3"
-              >
                 <div
-                  className={`h-2 w-2 rounded-full ${getPriorityColor(task.priority)}`}
-                />
-                <div className="flex-1">
-                  <p className="font-medium">{task.title}</p>
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <span className="capitalize">{task.status.replace("_", " ")}</span>
-                    {task.dueDate && (
-                      <>
-                        <span>•</span>
-                        <span
-                          className={
-                            isPast(parseISO(task.dueDate)) ? "text-red-500" : ""
-                          }
-                        >
-                          Due {format(parseISO(task.dueDate), "MMM d")}
-                        </span>
-                      </>
-                    )}
+                  key={task.id}
+                  className="flex items-center gap-3 rounded-lg border p-3"
+                >
+                  <div
+                    className={`h-2 w-2 rounded-full ${getPriorityColor(task.priority)}`}
+                  />
+                  <div className="flex-1">
+                    <p className="font-medium">{task.title}</p>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <span className="capitalize">{task.status.replace("_", " ")}</span>
+                      {task.dueDate && (
+                        <>
+                          <span>•</span>
+                          <span
+                            className={
+                              isPast(parseISO(task.dueDate)) ? "text-red-500" : ""
+                            }
+                          >
+                            Due {format(parseISO(task.dueDate), "MMM d")}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary" className="text-[10px]">
+                      {getTaskProgressPercent(task)}%
+                    </Badge>
+                    <Badge variant="outline" className="capitalize">
+                      {task.priority}
+                    </Badge>
                   </div>
                 </div>
-                <Badge variant="outline" className="capitalize">
-                  {task.priority}
-                </Badge>
-              </div>
-            ))}
+              ))}
             {filteredTasks.length === 0 && (
               <div className="py-8 text-center text-muted-foreground">
                 <CheckCircle2 className="mx-auto mb-2 h-8 w-8" />

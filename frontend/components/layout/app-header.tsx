@@ -18,6 +18,7 @@ import { Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
 
 export function AppHeader() {
   const { user } = useAuth();
@@ -74,6 +75,7 @@ export function AppHeader() {
           ))}
         </BreadcrumbList>
       </Breadcrumb>
+      <ThemeToggle />
       <Link href="/invitations">
         <Button variant="ghost" size="icon" className="relative">
           <Bell className="h-4 w-4" />

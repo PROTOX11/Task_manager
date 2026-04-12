@@ -91,7 +91,7 @@ const extractMentionTokens = (content = '') =>
     .filter(Boolean);
 
 const createMentionNotifications = async ({ task, sender, content }) => {
-  if (!task?.assignedDeveloper || !sender || !content) return;
+  if (!sender || !content) return;
 
   const mentionTokens = extractMentionTokens(content);
   if (mentionTokens.length === 0) return;

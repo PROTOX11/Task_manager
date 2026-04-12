@@ -179,7 +179,7 @@ export function TaskDialog({ task, project, onClose }: TaskDialogProps) {
       case "medium":
         return "bg-yellow-500";
       default:
-        return "bg-blue-500";
+        return "bg-amber-700";
     }
   };
 

@@ -26,13 +26,13 @@ const panelSchema = new mongoose.Schema({
   },
   width: {
     type: Number,
-    default: 320,
-    min: 240
+    default: 224,
+    min: 180
   },
   height: {
     type: Number,
-    default: 520,
-    min: 320
+    default: 364,
+    min: 260
   }
 }, {
   timestamps: true

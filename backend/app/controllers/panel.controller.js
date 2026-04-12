@@ -41,8 +41,8 @@ export const createPanel = async (req, res) => {
       description: description || '',
       color: color || '#007bff',
       order: panelCount,
-      width: Number(width) || 320,
-      height: Number(height) || 520
+      width: Number(width) || 224,
+      height: Number(height) || 364
     });
 
     await panel.save();

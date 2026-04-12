@@ -57,3 +57,7 @@ export const playNotificationSound = (params: {
   if (!kind) return;
   playSound(kind);
 };
+
+export const playInvitationSound = (senderRole?: User["role"]) => {
+  playSound(senderRole === "admin" ? "admin" : "personal");
+};

@@ -110,7 +110,7 @@ export default function NotificationsPage() {
                     )}
                   </div>
                   <div className="flex flex-row gap-2 sm:flex-col">
-                    {!notification.read && (
+                    {!notification.read && notification.type !== "comment_mentioned" && (
                       <Button size="sm" variant="outline" onClick={() => handleMarkRead(notification.id)}>
                         <Loader2 className="mr-2 h-4 w-4" />
                         Mark read

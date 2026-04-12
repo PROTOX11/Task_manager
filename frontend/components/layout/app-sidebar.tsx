@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import type React from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useData } from "@/lib/data-context";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +17,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -53,6 +55,8 @@ const adminNavItems = [
 
 export function AppSidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const { isMobile, setOpenMobile } = useSidebar();
   const { user, logout } = useAuth();
   const { projects, notifications } = useData();
   const unreadNotifications = notifications.filter((notification) => !notification.read).length;
@@ -62,6 +66,27 @@ export function AppSidebar() {
 
   const getInitials = (firstName: string, lastName: string) => {
     return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
+  };
+
+  const closeMobileSidebar = () => {
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+  };
+
+  const handleSidebarLinkClick = (
+    href: string,
+    event: React.MouseEvent<HTMLAnchorElement>,
+  ) => {
+    if (!isMobile) {
+      return;
+    }
+
+    event.preventDefault();
+    closeMobileSidebar();
+    window.setTimeout(() => {
+      router.push(href);
+    }, 280);
   };
 
   return (
@@ -83,7 +108,10 @@ export function AppSidebar() {
                 {visibleMainNavItems.map((item) => (
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton asChild isActive={pathname === item.href}>
-                      <Link href={item.href}>
+                      <Link
+                        href={item.href}
+                        onClick={(event) => handleSidebarLinkClick(item.href, event)}
+                      >
                         <item.icon className="h-4 w-4" />
                         <span className="flex-1">{item.title}</span>
                         {item.title === "Notifications" && unreadNotifications > 0 && (
@@ -118,7 +146,12 @@ export function AppSidebar() {
                     asChild
                     isActive={pathname === `/projects/${project.id}`}
                   >
-                    <Link href={`/projects/${project.id}`}>
+                    <Link
+                      href={`/projects/${project.id}`}
+                      onClick={(event) =>
+                        handleSidebarLinkClick(`/projects/${project.id}`, event)
+                      }
+                    >
                       <FolderKanban className="h-4 w-4" />
                       <span className="truncate">{project.name}</span>
                     </Link>
@@ -142,7 +175,10 @@ export function AppSidebar() {
                 {adminNavItems.map((item) => (
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton asChild isActive={pathname === item.href}>
-                      <Link href={item.href}>
+                      <Link
+                        href={item.href}
+                        onClick={(event) => handleSidebarLinkClick(item.href, event)}
+                      >
                         <item.icon className="h-4 w-4" />
                         <span>{item.title}</span>
                       </Link>
@@ -172,7 +208,10 @@ export function AppSidebar() {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-56">
             <DropdownMenuItem asChild>
-              <Link href="/profile">
+              <Link
+                href="/profile"
+                onClick={(event) => handleSidebarLinkClick("/profile", event)}
+              >
                 <Settings className="mr-2 h-4 w-4" />
                 Profile Settings
               </Link>

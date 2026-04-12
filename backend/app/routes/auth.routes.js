@@ -20,6 +20,7 @@ import {
   getAllUsers
 } from '../controllers/auth.controller.js';
 import { authenticate, authorizeAdmin } from '../middleware/auth.middleware.js';
+import { upload } from '../middleware/upload.middleware.js';
 
 const router = express.Router();
 
@@ -133,7 +134,7 @@ router.post('/login', validateLogin, handleValidationErrors, login);
 
 // Protected routes
 router.get('/profile', authenticate, getProfile);
-router.put('/profile', authenticate, updateProfile);
+router.put('/profile', authenticate, upload.single('avatar'), updateProfile);
 router.get('/developers', authenticate, getDevelopers);
 router.get('/users', authenticate, authorizeAdmin, getAllUsers);
 

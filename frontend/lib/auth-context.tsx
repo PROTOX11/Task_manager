@@ -17,7 +17,7 @@ interface AuthContextType {
   completeVerifiedSignup: (data: SignupData & { verificationToken: string }) => Promise<void>;
   signupAdmin: (data: AdminSignupData) => Promise<void>;
   logout: () => void;
-  updateProfile: (data: Partial<User>) => Promise<void>;
+  updateProfile: (data: UpdateProfileData) => Promise<void>;
 }
 
 interface SignupData {
@@ -30,6 +30,13 @@ interface SignupData {
 interface AdminSignupData extends SignupData {
   paymentAmount: number;
   paymentReference: string;
+}
+
+interface UpdateProfileData {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  avatarFile?: File | null;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -307,15 +314,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
-  const updateProfile = async (data: Partial<User>) => {
+  const updateProfile = async (data: UpdateProfileData) => {
     if (user) {
       const name = `${data.firstName || user.firstName} ${data.lastName || user.lastName}`.trim();
+      const hasAvatarFile = "avatarFile" in data && data.avatarFile instanceof File;
+      const body = hasAvatarFile && data.avatarFile
+        ? (() => {
+            const formData = new FormData();
+            formData.append("name", name);
+            formData.append("email", data.email || user.email);
+            formData.append("avatar", data.avatarFile);
+            return formData;
+          })()
+        : JSON.stringify({
+            name,
+            email: data.email || user.email,
+          });
+
       const response = await apiRequest<{ user: ApiUser }>("/auth/profile", {
         method: "PUT",
-        body: JSON.stringify({
-          name,
-          email: data.email || user.email,
-        }),
+        body,
       });
       setUser(mapApiUser(response.user));
     }

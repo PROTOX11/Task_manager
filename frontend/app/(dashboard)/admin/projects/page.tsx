@@ -74,8 +74,8 @@ export default function AdminProjectsPage() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-blue-500/10 p-2">
-                <FolderKanban className="h-5 w-5 text-blue-500" />
+              <div className="rounded-lg bg-amber-800/10 p-2">
+                <FolderKanban className="h-5 w-5 text-amber-800" />
               </div>
               <div>
                 <p className="text-2xl font-bold">{projects.length}</p>

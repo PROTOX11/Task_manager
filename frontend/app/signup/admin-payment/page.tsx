@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Field, FieldLabel } from "@/components/ui/field";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
 
 const ADMIN_SIGNUP_STORAGE_KEY = "pending-admin-signup";
 const ADMIN_PLAN_AMOUNT = 499;
@@ -172,7 +173,7 @@ function AdminPaymentPageContent() {
           email: pendingSignup.email,
         },
         theme: {
-          color: "#2563eb",
+          color: "#8b5e3c",
         },
         modal: {
           ondismiss: () => {
@@ -246,7 +247,10 @@ function AdminPaymentPageContent() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
+    <div className="relative flex min-h-screen items-center justify-center bg-muted/30 p-4">
+      <div className="absolute right-4 top-4 sm:right-6 sm:top-6">
+        <ThemeToggle showLabel />
+      </div>
       <Card className="w-full max-w-lg">
         <CardHeader className="text-center">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-primary">

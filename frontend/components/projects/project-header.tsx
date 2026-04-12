@@ -114,7 +114,9 @@ export function ProjectHeader({ project }: ProjectHeaderProps) {
   const contributorStats = useMemo(() => {
     const counts = new Map<string, number>();
     for (const member of project.members) {
-      counts.set(member.user.id, 0);
+      if (member.user.role !== "admin") {
+        counts.set(member.user.id, 0);
+      }
     }
 
     for (const panel of project.panels || []) {
@@ -133,7 +135,9 @@ export function ProjectHeader({ project }: ProjectHeaderProps) {
       }
     }
 
-    const rankedMembers = [...project.members].sort((a, b) => {
+    const rankedMembers = [...project.members]
+      .filter((member) => member.user.role !== "admin")
+      .sort((a, b) => {
       const aScore = counts.get(a.user.id) || 0;
       const bScore = counts.get(b.user.id) || 0;
       if (bScore !== aScore) return bScore - aScore;
@@ -209,6 +213,12 @@ export function ProjectHeader({ project }: ProjectHeaderProps) {
     return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
   };
 
+  const avatarSizes = [
+    "h-20 w-20 sm:h-24 sm:w-24",
+    "h-14 w-14 sm:h-16 sm:w-16",
+    "h-10 w-10 sm:h-12 sm:w-12",
+  ];
+
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
@@ -237,49 +247,36 @@ export function ProjectHeader({ project }: ProjectHeaderProps) {
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
-        <div className="min-w-0 flex-1 rounded-2xl border bg-gradient-to-br from-muted/30 to-background p-3 shadow-sm">
+        <div className="min-w-0 flex-1 rounded-2xl bg-gradient-to-br from-muted/30 to-background p-3 shadow-sm">
           <div className="mb-2 flex items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                Top contributed connected member
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {project.members.length} people connected to this project
-              </p>
-            </div>
             <Badge variant="secondary" className="shrink-0">
               Live
             </Badge>
           </div>
-          <div className="mt-3 grid grid-cols-3 gap-2">
+          <div className="mt-3 flex items-end justify-center gap-3">
             {contributorStats.topMembers.map((member, index) => (
               <HoverCard key={member.user.id} openDelay={120}>
                 <HoverCardTrigger asChild>
                   <button
                     type="button"
-                    className={`group flex flex-col items-center gap-2 rounded-2xl border bg-background/80 p-3 text-center shadow-sm transition hover:border-primary/40 hover:bg-background ${
-                      index === 0 ? "scale-[1.03]" : ""
-                    }`}
+                    className={`group relative flex items-center justify-center rounded-full border-0 bg-background shadow-none transition-all duration-200 hover:-translate-y-1 hover:shadow-sm ${
+                      avatarSizes[index] || avatarSizes[avatarSizes.length - 1]
+                    } ${index === 0 ? "shadow-lg" : ""}`}
                     aria-label={`${member.user.firstName} ${member.user.lastName}`}
                   >
-                    <Avatar className={`${index === 0 ? "h-16 w-16" : "h-14 w-14"}`}>
-                      <AvatarFallback className={index === 0 ? "text-lg" : "text-sm"}>
+                    <Avatar className="h-full w-full">
+                      <AvatarFallback className={index === 0 ? "text-xl" : index === 1 ? "text-base" : "text-sm"}>
                         {getInitials(member.user.firstName, member.user.lastName)}
                       </AvatarFallback>
                     </Avatar>
-                    <div className="min-w-0">
-                      <p className="truncate text-xs font-medium">
-                        {member.user.firstName} {member.user.lastName}
-                      </p>
-                      <p className="text-[10px] text-muted-foreground">
-                        {contributorStats.counts.get(member.user.id) || 0} pts
-                      </p>
-                    </div>
+                    <span className="absolute -bottom-1 -right-1 inline-flex h-6 w-6 items-center justify-center rounded-full border bg-background text-[10px] font-semibold shadow-sm">
+                      {index + 1}
+                    </span>
                   </button>
                 </HoverCardTrigger>
                 <HoverCardContent className="w-72">
                   <div className="flex items-start gap-3">
-                    <Avatar className="h-12 w-12">
+                    <Avatar className="h-14 w-14">
                       <AvatarFallback className="text-sm">
                         {getInitials(member.user.firstName, member.user.lastName)}
                       </AvatarFallback>

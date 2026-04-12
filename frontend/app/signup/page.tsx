@@ -13,6 +13,7 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { CheckCircle2, CheckSquare, Loader2, ShieldCheck } from "lucide-react";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
 
 const ADMIN_FEATURES = [
   "Create and manage unlimited projects",
@@ -197,7 +198,10 @@ function SignupPageContent() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
+    <div className="relative flex min-h-screen items-center justify-center bg-muted/30 p-4">
+      <div className="absolute right-4 top-4 sm:right-6 sm:top-6">
+        <ThemeToggle showLabel />
+      </div>
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-primary">
@@ -380,7 +384,7 @@ function SignupPageContent() {
                 <ul className="mt-5 space-y-2 text-sm text-[#494444]">
                   <li className="flex items-start gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#2c7a4b]" /><span>Google email is carried into signup</span></li>
                 </ul>
-                <Button type="button" onClick={completeGoogleDeveloperSignup} className="mt-6 h-auto rounded-full bg-[#1b7fe8] px-8 py-3 text-base font-medium text-white shadow-none hover:bg-[#166fd0]">Continue as Developer</Button>
+                <Button type="button" onClick={completeGoogleDeveloperSignup} className="mt-6 h-auto rounded-full bg-[#8b5e3c] px-8 py-3 text-base font-medium text-white shadow-none hover:bg-[#744d31]">Continue as Developer</Button>
               </div>
               <div className="rounded-[2.25rem] bg-[#b9b2b2] p-6 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.28)]">
                 <div className="mb-4 inline-flex rounded-full bg-white/20 px-5 py-2 text-sm font-semibold uppercase tracking-[0.18em] text-white">Admin plan</div>

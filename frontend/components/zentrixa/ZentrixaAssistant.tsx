@@ -85,6 +85,7 @@ export function ZentrixaAssistant({ context }: { context?: ZentrixaContext }) {
     },
   ]);
   const endRef = useRef<HTMLDivElement | null>(null);
+  const assistantShellRef = useRef<HTMLDivElement | null>(null);
 
   const scrollToBottom = () => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -261,6 +262,21 @@ export function ZentrixaAssistant({ context }: { context?: ZentrixaContext }) {
       toast.error(error);
     }
   }, [error]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (target && assistantShellRef.current?.contains(target)) {
+        return;
+      }
+      setOpen(false);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () => document.removeEventListener("pointerdown", handlePointerDown, true);
+  }, [open]);
 
   const parsedCard = useMemo(() => {
     if (!parsedCommand) return null;
@@ -509,9 +525,9 @@ export function ZentrixaAssistant({ context }: { context?: ZentrixaContext }) {
   }, [assigneeSuggestions, createFollowUp, deadlineDraft, followUpMode, handleQuickAssign, handleSaveDeadline, loading]);
 
   return (
-    <div className="fixed bottom-5 right-5 z-50 sm:bottom-6 sm:right-6">
+    <div ref={assistantShellRef} className="fixed bottom-4 right-4 left-auto z-50 sm:bottom-6 sm:right-6">
       {open && (
-        <Card className="zentrixa-panel mb-3 w-[min(92vw,26rem)] border-border/70 bg-card/90 shadow-2xl">
+        <Card className="zentrixa-panel absolute bottom-16 right-0 mb-3 w-[min(calc(100vw-2rem),28rem)] origin-bottom-right border-border/70 bg-card/90 shadow-2xl backdrop-blur-xl transform-gpu sm:bottom-18 sm:w-[min(92vw,26rem)]">
           <div className="flex items-center justify-between border-b border-border/70 px-4 py-3">
             <div className="flex items-center gap-3">
               <div className="zentrixa-orb flex h-10 w-10 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
@@ -610,11 +626,18 @@ export function ZentrixaAssistant({ context }: { context?: ZentrixaContext }) {
         type="button"
         size="lg"
         onClick={() => setOpen((value) => !value)}
-        className="zentrixa-orb h-14 rounded-full px-5 shadow-xl"
+        className={cn(
+          "zentrixa-orb h-14 rounded-full border border-border/50 bg-[linear-gradient(135deg,rgba(161,111,61,0.98),rgba(92,59,31,0.98))] px-4 shadow-xl shadow-[rgba(92,59,31,0.22)] ring-1 ring-white/10 transition-[transform,box-shadow,background-color,filter] duration-300 ease-out hover:-translate-y-0.5 hover:scale-[1.02] hover:shadow-2xl active:translate-y-0 active:scale-[0.98] sm:px-5",
+          open && "bg-[linear-gradient(135deg,rgba(108,72,40,0.98),rgba(74,49,27,0.98))]",
+        )}
         aria-label="Toggle Zentrixa assistant"
       >
-        {open ? <X className="h-5 w-5" /> : <Bot className="h-5 w-5" />}
-        <span className="ml-2 hidden sm:inline">{open ? "Close Zentrixa" : "Ask Zentrixa"}</span>
+        <span className="mr-2 flex h-8 w-8 items-center justify-center rounded-full bg-white/12 ring-1 ring-white/15">
+          {open ? <X className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
+        </span>
+        <span className="hidden text-sm font-semibold tracking-wide sm:inline">
+          {open ? "Close Zentrixa" : "Ask Zentrixa"}
+        </span>
       </Button>
     </div>
   );

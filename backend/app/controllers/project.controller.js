@@ -3,6 +3,7 @@ import Panel from '../models/Panel.js';
 import Task from '../models/Task.js';
 import User from '../models/User.js';
 import ProjectRequest from '../models/ProjectRequest.js';
+import { emitToUser } from '../services/realtime.service.js';
 
 // Get all projects for the current user
 export const getProjects = async (req, res) => {
@@ -217,9 +218,17 @@ export const inviteDeveloper = async (req, res) => {
 
     await request.save();
 
+    const populatedRequest = await ProjectRequest.findById(request._id)
+      .populate('projectId', 'name description')
+      .populate('senderId', 'name email role');
+
+    emitToUser(developer._id.toString(), 'request:new', {
+      request: populatedRequest
+    });
+
     res.status(201).json({
       message: 'Invitation sent successfully',
-      request
+      request: populatedRequest
     });
   } catch (error) {
     console.error('Invite developer error:', error);

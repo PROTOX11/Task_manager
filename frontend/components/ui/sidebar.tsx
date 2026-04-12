@@ -28,7 +28,7 @@ import {
 const SIDEBAR_COOKIE_NAME = 'sidebar_state'
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
 const SIDEBAR_WIDTH = '16rem'
-const SIDEBAR_WIDTH_MOBILE = '18rem'
+const SIDEBAR_WIDTH_MOBILE = '21rem'
 const SIDEBAR_WIDTH_ICON = '3rem'
 const SIDEBAR_KEYBOARD_SHORTCUT = 'b'
 
@@ -187,7 +187,7 @@ function Sidebar({
           data-sidebar="sidebar"
           data-slot="sidebar"
           data-mobile="true"
-          className="bg-sidebar text-sidebar-foreground w-(--sidebar-width) p-0 [&>button]:hidden"
+          className="bg-sidebar text-sidebar-foreground w-(--sidebar-width) p-0 [&>button]:hidden [&_[data-sidebar=group-label]]:text-[0.9rem] [&_[data-sidebar=group-label]]:font-semibold [&_[data-sidebar=menu-button]]:text-[1.05rem] [&_[data-sidebar=menu-sub-button]]:text-[0.95rem]"
           style={
             {
               '--sidebar-width': SIDEBAR_WIDTH_MOBILE,
