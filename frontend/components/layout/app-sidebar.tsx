@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import type React from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useData } from "@/lib/data-context";
+import { BrandLogo } from "@/components/brand-logo";
 import { Badge } from "@/components/ui/badge";
 import {
   Sidebar,
@@ -29,7 +30,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  CheckSquare,
   LayoutDashboard,
   FolderKanban,
   ListTodo,
@@ -93,10 +93,7 @@ export function AppSidebar() {
     <Sidebar>
       <SidebarHeader className="border-b p-4">
         <Link href="/dashboard" className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-            <CheckSquare className="h-4 w-4 text-primary-foreground" />
-          </div>
-          <span className="text-lg font-semibold">Tickzen</span>
+          <BrandLogo className="h-12 w-[8.75rem] sm:h-14 sm:w-[9.75rem]" priority sizes="160px" />
         </Link>
       </SidebarHeader>
 
@@ -112,8 +109,8 @@ export function AppSidebar() {
                         href={item.href}
                         onClick={(event) => handleSidebarLinkClick(item.href, event)}
                       >
-                        <item.icon className="h-4 w-4" />
-                        <span className="flex-1">{item.title}</span>
+                        <item.icon className="h-4 w-4 max-[767px]:h-5 max-[767px]:w-5" />
+                        <span className="flex-1 max-[767px]:text-[1rem]">{item.title}</span>
                         {item.title === "Notifications" && unreadNotifications > 0 && (
                           <Badge variant="secondary" className="ml-auto">
                             {unreadNotifications}
@@ -133,7 +130,7 @@ export function AppSidebar() {
             {user?.role === "admin" && (
               <Link href="/projects/new">
                 <Button variant="ghost" size="icon" className="h-5 w-5">
-                  <Plus className="h-3 w-3" />
+                  <Plus className="h-3 w-3 max-[767px]:h-4 max-[767px]:w-4" />
                 </Button>
               </Link>
             )}
@@ -152,8 +149,8 @@ export function AppSidebar() {
                         handleSidebarLinkClick(`/projects/${project.id}`, event)
                       }
                     >
-                      <FolderKanban className="h-4 w-4" />
-                      <span className="truncate">{project.name}</span>
+                      <FolderKanban className="h-4 w-4 max-[767px]:h-5 max-[767px]:w-5" />
+                      <span className="truncate max-[767px]:text-[1rem]">{project.name}</span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -179,8 +176,8 @@ export function AppSidebar() {
                         href={item.href}
                         onClick={(event) => handleSidebarLinkClick(item.href, event)}
                       >
-                        <item.icon className="h-4 w-4" />
-                        <span>{item.title}</span>
+                        <item.icon className="h-4 w-4 max-[767px]:h-5 max-[767px]:w-5" />
+                        <span className="max-[767px]:text-[1rem]">{item.title}</span>
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -194,16 +191,16 @@ export function AppSidebar() {
       <SidebarFooter className="border-t p-2">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="w-full justify-start gap-2">
+            <Button variant="ghost" className="w-full justify-start gap-2 max-[767px]:px-2 max-[767px]:py-2">
               <Avatar className="h-6 w-6">
                 <AvatarFallback className="text-xs">
                   {user ? getInitials(user.firstName, user.lastName) : "U"}
                 </AvatarFallback>
               </Avatar>
-              <span className="flex-1 truncate text-left text-sm">
+              <span className="flex-1 truncate text-left text-sm max-[767px]:text-[1rem]">
                 {user?.firstName} {user?.lastName}
               </span>
-              <ChevronUp className="h-4 w-4" />
+              <ChevronUp className="h-4 w-4 max-[767px]:h-5 max-[767px]:w-5" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-56">
@@ -212,13 +209,13 @@ export function AppSidebar() {
                 href="/profile"
                 onClick={(event) => handleSidebarLinkClick("/profile", event)}
               >
-                <Settings className="mr-2 h-4 w-4" />
+                <Settings className="mr-2 h-4 w-4 max-[767px]:h-5 max-[767px]:w-5" />
                 Profile Settings
               </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={logout} className="text-destructive">
-              <LogOut className="mr-2 h-4 w-4" />
+              <LogOut className="mr-2 h-4 w-4 max-[767px]:h-5 max-[767px]:w-5" />
               Sign Out
             </DropdownMenuItem>
           </DropdownMenuContent>

@@ -8,8 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldLabel } from "@/components/ui/field";
+import { BrandLogo } from "@/components/brand-logo";
 import { toast } from "sonner";
-import { CheckSquare, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 export function LoginForm() {
   const [email, setEmail] = useState("");
@@ -57,9 +58,7 @@ export function LoginForm() {
     <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-primary">
-            <CheckSquare className="h-6 w-6 text-primary-foreground" />
-          </div>
+          <BrandLogo className="mx-auto mb-4 h-16 w-[9rem] sm:h-20 sm:w-[10.5rem]" priority sizes="180px" />
           <CardTitle className="text-2xl">Welcome to Tickzen</CardTitle>
           <CardDescription>Sign in to manage your projects and tasks</CardDescription>
         </CardHeader>

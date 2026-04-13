@@ -24,7 +24,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { MoreHorizontal, Search, UserPlus, Settings, Trash2, Users, X } from "lucide-react";
@@ -222,24 +222,59 @@ export function ProjectHeader({ project }: ProjectHeaderProps) {
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold">{project.name}</h1>
-          <Badge
-            variant={project.status === "active" ? "default" : "secondary"}
-            className="capitalize"
-          >
-            {project.status}
-          </Badge>
+        <div className="flex w-full items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-1 flex-col">
+            <div className="flex items-center gap-2">
+              <h1 className="truncate text-2xl font-bold max-[767px]:text-[1.75rem]">{project.name}</h1>
+              <Badge
+                variant={project.status === "active" ? "default" : "secondary"}
+                className="capitalize"
+              >
+                {project.status}
+              </Badge>
+            </div>
+            {project.description && (
+              <p className="mt-1 text-muted-foreground max-[767px]:text-[1rem]">{project.description}</p>
+            )}
+          </div>
+          <div className="header-right flex shrink-0 items-center gap-1 whitespace-nowrap sm:hidden">
+            <Badge
+              variant="secondary"
+              className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium"
+            >
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              Live
+            </Badge>
+            <div className="top-contributors">
+              {contributorStats.topMembers.slice(0, 3).map((member, index) => (
+                <Avatar
+                  key={member.user.id}
+                  className={`border border-background shadow-sm ${
+                    index === 0
+                      ? "h-7 w-7"
+                      : index === 1
+                        ? "h-6 w-6"
+                        : "h-5 w-5"
+                  }`}
+                >
+                  <AvatarImage
+                    src={member.user.avatar || undefined}
+                    alt={`${member.user.firstName} ${member.user.lastName}`}
+                  />
+                  <AvatarFallback className="text-[10px]">
+                    {getInitials(member.user.firstName, member.user.lastName)}
+                  </AvatarFallback>
+                </Avatar>
+              ))}
+            </div>
+          </div>
         </div>
-        {project.description && (
-          <p className="mt-1 text-muted-foreground">{project.description}</p>
-        )}
         {project.githubRepository && (
           <a
             href={project.githubRepository}
             target="_blank"
             rel="noreferrer"
-            className="mt-2 inline-flex items-center rounded-full border px-3 py-1 text-sm text-primary hover:bg-muted/60"
+            className="mt-2 inline-flex items-center rounded-full border px-3 py-1 text-sm text-primary hover:bg-muted/60 max-[767px]:text-[1rem]"
           >
             GitHub Repo
           </a>
@@ -247,7 +282,7 @@ export function ProjectHeader({ project }: ProjectHeaderProps) {
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
-        <div className="min-w-0 flex-1 rounded-2xl bg-gradient-to-br from-muted/30 to-background p-3 shadow-sm">
+        <div className="hidden min-w-0 flex-1 rounded-2xl bg-gradient-to-br from-muted/30 to-background p-3 shadow-sm sm:block">
           <div className="mb-2 flex items-center justify-between gap-3">
             <Badge variant="secondary" className="shrink-0">
               Live
@@ -300,43 +335,81 @@ export function ProjectHeader({ project }: ProjectHeaderProps) {
             ))}
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-3 sm:flex-col sm:items-stretch">
+        <div className="flex shrink-0 items-center gap-1 whitespace-nowrap sm:hidden">
+          <Button variant="outline" className="sm:w-full max-[767px]:px-3 max-[767px]:py-2 max-[767px]:text-[1rem]" onClick={() => setShowInviteDialog(true)}>
+            <UserPlus className="mr-2 h-4 w-4 max-[767px]:h-5 max-[767px]:w-5" />
+            Invite
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon" className="shrink-0 max-[767px]:h-10 max-[767px]:w-10">
+                <MoreHorizontal className="h-4 w-4 max-[767px]:h-5 max-[767px]:w-5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => handleStatusChange("active")}>
+                <Settings className="mr-2 h-4 w-4 max-[767px]:h-5 max-[767px]:w-5" />
+                Mark as Active
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleStatusChange("completed")}>
+                <Settings className="mr-2 h-4 w-4 max-[767px]:h-5 max-[767px]:w-5" />
+                Mark as Completed
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setShowMembersDialog(true)}>
+                <Users className="mr-2 h-4 w-4 max-[767px]:h-5 max-[767px]:w-5" />
+                View Members ({project.members.length})
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-destructive"
+                onClick={() => setShowDeleteDialog(true)}
+              >
+                <Trash2 className="mr-2 h-4 w-4 max-[767px]:h-5 max-[767px]:w-5" />
+                Delete Project
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+        <div className="hidden shrink-0 items-center gap-3 whitespace-nowrap sm:flex sm:flex-col sm:items-stretch">
           <Button variant="outline" className="sm:w-full" onClick={() => setShowInviteDialog(true)}>
             <UserPlus className="mr-2 h-4 w-4" />
             Invite
           </Button>
         </div>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="icon" className="shrink-0">
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => handleStatusChange("active")}>
-              <Settings className="mr-2 h-4 w-4" />
-              Mark as Active
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => handleStatusChange("completed")}>
-              <Settings className="mr-2 h-4 w-4" />
-              Mark as Completed
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => setShowMembersDialog(true)}>
-              <Users className="mr-2 h-4 w-4" />
-              View Members ({project.members.length})
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              className="text-destructive"
-              onClick={() => setShowDeleteDialog(true)}
-            >
-              <Trash2 className="mr-2 h-4 w-4" />
-              Delete Project
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div className="hidden sm:block">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon" className="shrink-0">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => handleStatusChange("active")}>
+                <Settings className="mr-2 h-4 w-4" />
+                Mark as Active
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleStatusChange("completed")}>
+                <Settings className="mr-2 h-4 w-4" />
+                Mark as Completed
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setShowMembersDialog(true)}>
+                <Users className="mr-2 h-4 w-4" />
+                View Members ({project.members.length})
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-destructive"
+                onClick={() => setShowDeleteDialog(true)}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete Project
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
       <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>

@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useRef, useState, ReactNode } from "react";
 import type { Project, Panel, Task, ProjectRequest, Notification, User } from "./types";
 import { useAuth } from "./auth-context";
-import { apiRequest, getSocketIoBaseUrl, getToken } from "./api";
+import { apiRequest, ApiError, getSocketIoBaseUrl, getToken } from "./api";
 import { playInvitationSound, playNotificationSound } from "./notification-sounds";
 import { io, Socket } from "socket.io-client";
 
@@ -11,6 +11,7 @@ interface DataContextType {
   projects: Project[];
   requests: ProjectRequest[];
   notifications: Notification[];
+  isLoading: boolean;
   createProject: (data: CreateProjectData) => Promise<Project>;
   updateProject: (id: string, data: Partial<Project>) => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
@@ -21,7 +22,7 @@ interface DataContextType {
   createTask: (data: CreateTaskData) => Promise<Task>;
   updateTask: (taskId: string, data: Partial<Task>) => Promise<void>;
   deleteTask: (taskId: string) => Promise<void>;
-  moveTask: (taskId: string, newPanelId: string) => Promise<void>;
+  moveTask: (taskId: string, newPanelId: string, order?: number) => Promise<void>;
   addComment: (taskId: string, content: string) => Promise<void>;
   toggleSubtask: (taskId: string, subtaskId: string) => Promise<void>;
   addSubtask: (taskId: string, title: string) => Promise<void>;
@@ -176,6 +177,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [requests, setRequests] = useState<ProjectRequest[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const loadedNotificationsRef = useRef(false);
   const notificationIdsRef = useRef<Set<string>>(new Set());
   const loadedRequestsRef = useRef(false);
@@ -220,7 +222,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
               ? apiTask.comments.map((comment: any, commentIndex: number) => mapComment(comment, commentIndex))
               : [],
             subtasks: [],
-            order: index,
+            order: typeof apiTask.order === "number" ? apiTask.order : index,
             createdAt: apiTask.createdAt || new Date().toISOString(),
             updatedAt: apiTask.updatedAt || new Date().toISOString(),
           });
@@ -249,7 +251,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
             projectId,
             width: p.width || 320,
             height: p.height || 520,
-            tasks: tasksByPanel[p._id.toString()] || [],
+            tasks: (tasksByPanel[p._id.toString()] || []).sort((a, b) => a.order - b.order),
           })),
           createdAt: apiProject.createdAt || new Date().toISOString(),
           updatedAt: apiProject.updatedAt || new Date().toISOString(),
@@ -374,6 +376,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setProjects([]);
       setRequests([]);
       setNotifications([]);
+      setIsLoading(false);
       loadedNotificationsRef.current = false;
       notificationIdsRef.current = new Set();
       loadedRequestsRef.current = false;
@@ -381,6 +384,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       return;
     }
     let isMounted = true;
+    setIsLoading(true);
 
     const refresh = async () => {
       try {
@@ -388,6 +392,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         if (isMounted) {
           console.error("Failed to refresh dashboard data:", error);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
         }
       }
     };
@@ -545,6 +553,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       panelId: response.task.panelId?.toString() || data.panelId,
       projectId: response.task.projectId?.toString() || data.projectId,
       dueDate: response.task.deadline ? new Date(response.task.deadline).toISOString() : undefined,
+      order: typeof response.task.order === "number" ? response.task.order : 0,
       attachments: rawAttachments.map((attachment: any, attachmentIndex: number) =>
         mapAttachment(attachment, attachmentIndex, data.projectId, response.task._id.toString())
       ),
@@ -552,7 +561,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
         ? response.task.comments.map((comment: any, commentIndex: number) => mapComment(comment, commentIndex))
         : [],
       subtasks: [],
-      order: 0,
       createdAt: response.task.createdAt || new Date().toISOString(),
       updatedAt: response.task.updatedAt || new Date().toISOString(),
     };
@@ -566,6 +574,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (data.description !== undefined) payload.description = data.description;
     if (data.dueDate !== undefined) payload.deadline = data.dueDate;
     if (data.panelId) payload.panelId = data.panelId;
+    if (data.order !== undefined) payload.order = data.order;
     if (Object.keys(payload).length === 1 && payload.status) {
       await apiRequest(`/tasks/${taskId}/status`, {
         method: "PATCH",
@@ -611,7 +620,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  const moveTask = async (taskId: string, newPanelId: string) => {
+  const moveTask = async (taskId: string, newPanelId: string, order?: number) => {
     const targetPanel = projects
       .flatMap((project) => project.panels)
       .find((panel) => panel.id === newPanelId);
@@ -622,6 +631,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         method: "PATCH",
         body: JSON.stringify({
           panelId: newPanelId,
+          order,
           status: toApiTaskStatus(panelStatus),
         }),
       });
@@ -629,7 +639,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    await updateTask(taskId, { panelId: newPanelId });
+    await updateTask(taskId, { panelId: newPanelId, order });
   };
 
   const addComment = async (taskId: string, content: string) => {
@@ -721,10 +731,22 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const usersResponse = await apiRequest<{ users: Array<any> }>("/auth/users");
     const developer = (usersResponse.users || []).find((u) => u.email === email);
     if (!developer) throw new Error("Developer not found");
-    await apiRequest(`/projects/${projectId}/invite`, {
-      method: "POST",
-      body: JSON.stringify({ developerId: developer._id, message }),
-    });
+
+    const invite = async (force = false) =>
+      apiRequest(`/projects/${projectId}/invite`, {
+        method: "POST",
+        body: JSON.stringify({ developerId: developer._id, message, force }),
+      });
+
+    try {
+      await invite();
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        await invite(true);
+      } else {
+        throw error;
+      }
+    }
     await loadRequests();
   };
 
@@ -775,6 +797,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         projects,
         requests,
         notifications,
+        isLoading,
         createProject,
         updateProject,
         deleteProject,

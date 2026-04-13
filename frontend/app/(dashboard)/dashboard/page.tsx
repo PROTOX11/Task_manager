@@ -176,7 +176,7 @@ export default function DashboardPage() {
         )}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="dashboard-stats-grid grid gap-4 lg:grid-cols-3 xl:grid-cols-6">
         {stats.map((stat) => (
           <Card
             key={stat.title}

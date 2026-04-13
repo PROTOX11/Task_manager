@@ -174,7 +174,8 @@ export const updateProject = async (req, res) => {
 export const inviteDeveloper = async (req, res) => {
   try {
     const { id } = req.params;
-    const { developerId, message } = req.body;
+    const { developerId, userId, message, force = false } = req.body;
+    const targetDeveloperId = developerId || userId;
 
     const project = await Project.findById(id);
     if (!project) {
@@ -187,50 +188,61 @@ export const inviteDeveloper = async (req, res) => {
     }
 
     // Check if developer exists
-    const developer = await User.findById(developerId);
+    if (!targetDeveloperId) {
+      return res.status(400).json({ message: 'Developer id is required' });
+    }
+
+    const developer = await User.findById(targetDeveloperId);
     if (!developer || developer.role !== 'developer') {
       return res.status(404).json({ message: 'Developer not found' });
     }
 
-    // Check if developer is already in project
-    if (project.developers.includes(developerId)) {
-      return res.status(400).json({ message: 'Developer is already in this project' });
+    const isAlreadyMember = project.developers.some((memberId) => memberId.toString() === targetDeveloperId.toString());
+    if (isAlreadyMember && !force) {
+      return res.status(409).json({ message: 'Developer is already in this project' });
     }
 
-    // Check if there's already a pending request
     const existingRequest = await ProjectRequest.findOne({
       projectId: id,
-      developerId,
-      status: 'pending'
+      developerId: targetDeveloperId
     });
 
-    if (existingRequest) {
-      return res.status(400).json({ message: 'Invitation already sent to this developer' });
-    }
-
-    // Create invitation request
-    const request = new ProjectRequest({
+    const requestData = {
       projectId: id,
-      developerId,
+      developerId: targetDeveloperId,
       senderId: req.userId,
+      status: 'pending',
       message: message || `You have been invited to join ${project.name}`
-    });
+    };
 
-    await request.save();
+    const request = await ProjectRequest.findOneAndUpdate(
+      { projectId: id, developerId: targetDeveloperId },
+      { $set: requestData },
+      {
+        new: true,
+        upsert: true,
+        setDefaultsOnInsert: true
+      }
+    );
 
     const populatedRequest = await ProjectRequest.findById(request._id)
       .populate('projectId', 'name description')
       .populate('senderId', 'name email role');
 
-    emitToUser(developer._id.toString(), 'request:new', {
-      request: populatedRequest
-    });
+    if (!existingRequest || existingRequest.status !== 'pending') {
+      emitToUser(developer._id.toString(), 'request:new', {
+        request: populatedRequest
+      });
+    }
 
     res.status(201).json({
-      message: 'Invitation sent successfully',
+      message: existingRequest ? 'Invitation refreshed successfully' : 'Invitation sent successfully',
       request: populatedRequest
     });
   } catch (error) {
+    if (error?.code === 11000) {
+      return res.status(409).json({ message: 'Invitation already exists for this developer' });
+    }
     console.error('Invite developer error:', error);
     res.status(500).json({ message: 'Error inviting developer', error: error.message });
   }

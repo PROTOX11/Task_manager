@@ -57,7 +57,7 @@ export function AppHeader() {
 
   return (
     <header className="flex h-14 items-center gap-4 border-b px-4">
-      <SidebarTrigger />
+      <SidebarTrigger className="max-[767px]:h-10 max-[767px]:w-10" />
       <Separator orientation="vertical" className="h-6" />
       <Breadcrumb className="flex-1">
         <BreadcrumbList>
@@ -78,7 +78,7 @@ export function AppHeader() {
       <ThemeToggle />
       <Link href="/invitations">
         <Button variant="ghost" size="icon" className="relative">
-          <Bell className="h-4 w-4" />
+          <Bell className="h-4 w-4 max-[767px]:h-5 max-[767px]:w-5" />
           {pendingRequests > 0 && (
             <Badge
               variant="destructive"

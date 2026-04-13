@@ -649,10 +649,10 @@ export function ProjectCollaborationPanel({ project }: ProjectCollaborationPanel
             <MessageSquare className="h-5 w-5" />
             Project Chat
           </CardTitle>
-        <CardDescription>
-          Everyone connected to this project can see public chat. Pick a person for a private conversation.
-        </CardDescription>
-      </CardHeader>
+        </CardHeader>
+        <div className="project-chat-label px-6 text-sm font-medium text-muted-foreground">
+          Project chat
+        </div>
       <CardContent className="min-w-0 space-y-4 xl:pr-[21rem]">
           <div className="space-y-3">
             <div className="flex flex-wrap gap-2">
@@ -826,17 +826,12 @@ export function ProjectCollaborationPanel({ project }: ProjectCollaborationPanel
             <div className="absolute bottom-1 right-1 h-1.5 w-1.5 border-r-2 border-t-2 border-muted-foreground" />
           </button>
 
-          <div className="min-w-0 space-y-3 rounded-2xl border border-border/70 bg-background/90 p-4 shadow-lg backdrop-blur-sm xl:absolute xl:right-4 xl:top-[7.25rem] xl:w-80">
-            <div className="mt-3 rounded-xl border bg-muted/20 p-3">
-              <p className="text-sm font-medium">
+          <div className="min-w-0 space-y-3 rounded-2xl border border-border/70 bg-background/90 p-4 shadow-lg backdrop-blur-sm xl:absolute xl:right-4 xl:top-[6.25rem] xl:w-80">
+            <div className="rounded-xl border bg-muted/20 p-3">
+              <p className="text-sm font-medium max-[767px]:text-[1rem]">
                 {conversationWith === PUBLIC_CHAT
                   ? "Public project chat"
                   : `Private chat with ${selectedMember?.user.firstName} ${selectedMember?.user.lastName}`}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {conversationWith === PUBLIC_CHAT
-                  ? "Visible to everyone connected to this project."
-                  : "Only you and this person can see this conversation."}
               </p>
               {conversationWith !== PUBLIC_CHAT && (
                 <p className="mt-1 text-xs text-muted-foreground">
@@ -861,9 +856,9 @@ export function ProjectCollaborationPanel({ project }: ProjectCollaborationPanel
                 <Button
                   onClick={handleSendMessage}
                   disabled={isSending || !messageContent.trim()}
-                  className="w-full sm:w-auto"
+                  className="w-full sm:w-auto max-[767px]:text-[1rem]"
                 >
-                  <Send className="mr-2 h-4 w-4" />
+                  <Send className="mr-2 h-4 w-4 max-[767px]:h-5 max-[767px]:w-5" />
                   Send
                 </Button>
               </div>
@@ -978,8 +973,8 @@ export function ProjectCollaborationPanel({ project }: ProjectCollaborationPanel
 
       <Card className="min-w-0 overflow-x-auto border-border/60">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Video className="h-5 w-5" />
+          <CardTitle className="flex items-center gap-2 max-[767px]:text-[1.1rem]">
+            <Video className="h-5 w-5 max-[767px]:h-6 max-[767px]:w-6" />
             Meeting Schedule
           </CardTitle>
           <CardDescription>
@@ -991,12 +986,12 @@ export function ProjectCollaborationPanel({ project }: ProjectCollaborationPanel
             <>
               <div className="space-y-3 rounded-xl border bg-muted/20 p-4">
                 <div className="flex max-w-full flex-col gap-2 sm:flex-row">
-                  <Button type="button" variant="outline" onClick={handleCreateMeeting}>
-                    <Plus className="mr-2 h-4 w-4" />
+                  <Button type="button" variant="outline" onClick={handleCreateMeeting} className="max-[767px]:text-[1rem]">
+                    <Plus className="mr-2 h-4 w-4 max-[767px]:h-5 max-[767px]:w-5" />
                     Start Meeting Now
                   </Button>
-                  <Button onClick={handleScheduleMeeting} disabled={isScheduling}>
-                    <Calendar className="mr-2 h-4 w-4" />
+                  <Button onClick={handleScheduleMeeting} disabled={isScheduling} className="max-[767px]:text-[1rem]">
+                    <Calendar className="mr-2 h-4 w-4 max-[767px]:h-5 max-[767px]:w-5" />
                     Schedule Meeting
                   </Button>
                 </div>
@@ -1028,17 +1023,17 @@ export function ProjectCollaborationPanel({ project }: ProjectCollaborationPanel
               {meetingLink && (
                   <div className="max-w-[32rem] rounded-xl border bg-background p-3">
                     <div className="flex items-center gap-2 text-sm font-medium">
-                      <Link2 className="h-4 w-4" />
+                      <Link2 className="h-4 w-4 max-[767px]:h-5 max-[767px]:w-5" />
                       Meeting link
                     </div>
                   <div className="mt-2 flex max-w-full flex-col gap-2 sm:flex-row">
                     <Input value={meetingLink} readOnly className="truncate" />
-                    <Button type="button" variant="outline" onClick={copyMeetingLink}>
-                      <Copy className="mr-2 h-4 w-4" />
+                    <Button type="button" variant="outline" onClick={copyMeetingLink} className="max-[767px]:text-[1rem]">
+                      <Copy className="mr-2 h-4 w-4 max-[767px]:h-5 max-[767px]:w-5" />
                       Copy
                     </Button>
-                    <Button type="button" onClick={() => void handlePostMeetingLink()}>
-                      <MessageSquare className="mr-2 h-4 w-4" />
+                    <Button type="button" onClick={() => void handlePostMeetingLink()} className="max-[767px]:text-[1rem]">
+                      <MessageSquare className="mr-2 h-4 w-4 max-[767px]:h-5 max-[767px]:w-5" />
                       Post to chat
                     </Button>
                   </div>
@@ -1056,8 +1051,8 @@ export function ProjectCollaborationPanel({ project }: ProjectCollaborationPanel
 
           <div className="min-w-0 space-y-3">
             <div className="flex items-center gap-2">
-              <Users className="h-4 w-4" />
-              <p className="text-sm font-medium">Upcoming Meetings</p>
+              <Users className="h-4 w-4 max-[767px]:h-5 max-[767px]:w-5" />
+              <p className="text-sm font-medium max-[767px]:text-[1rem]">Upcoming Meetings</p>
             </div>
             <ScrollArea className="h-[180px] max-w-full rounded-lg border">
               <div className="space-y-2 p-3">

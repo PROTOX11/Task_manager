@@ -169,7 +169,7 @@ export const getTasksByProject = async (req, res) => {
     const tasks = await Task.find({ projectId })
       .populate('assignedDeveloper', 'name email')
       .populate('createdBy', 'name email')
-      .sort({ createdAt: -1 });
+      .sort({ panelId: 1, order: 1, createdAt: 1 });
 
     res.json({ tasks });
   } catch (error) {
@@ -226,11 +226,14 @@ export const createTask = async (req, res) => {
       return res.status(404).json({ message: 'Project not found' });
     }
 
+    const lastTask = await Task.findOne({ projectId, panelId }).sort({ order: -1, createdAt: -1 });
+
     const task = new Task({
       title,
       description,
       projectId,
       panelId,
+      order: lastTask ? (lastTask.order || 0) + 1 : 0,
       assignedDeveloper,
       createdBy: req.userId,
       status: 'pending',
@@ -273,7 +276,7 @@ export const createTask = async (req, res) => {
 export const updateTask = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, assignedDeveloper, priority, deadline, status, panelId } = req.body;
+    const { title, description, assignedDeveloper, priority, deadline, status, panelId, order } = req.body;
     const uploadedFiles = Array.isArray(req.files) ? req.files : req.file ? [req.file] : [];
 
     const task = await Task.findById(id);
@@ -292,6 +295,9 @@ export const updateTask = async (req, res) => {
     if (deadline !== undefined) task.deadline = deadline ? new Date(deadline) : undefined;
     if (status) task.status = status;
     if (panelId) task.panelId = panelId;
+    if (order !== undefined && order !== null && !Number.isNaN(Number(order))) {
+      task.order = Number(order);
+    }
 
     // Handle new file attachment
     if (uploadedFiles.length > 0) {
@@ -543,7 +549,7 @@ export const downloadAttachment = async (req, res) => {
 export const updateTaskStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, panelId } = req.body;
+    const { status, panelId, order } = req.body;
 
     const task = await Task.findById(id);
     if (!task) {
@@ -560,6 +566,9 @@ export const updateTaskStatus = async (req, res) => {
 
     if (panelId) {
       task.panelId = panelId;
+    }
+    if (order !== undefined && order !== null && !Number.isNaN(Number(order))) {
+      task.order = Number(order);
     }
 
     if (isDeveloperCompletion) {

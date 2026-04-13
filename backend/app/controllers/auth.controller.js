@@ -820,9 +820,21 @@ export const getAllUsers = async (req, res) => {
       return;
     }
 
-    const users = await User.find()
+    const search = (req.query.search || '').toString().trim();
+    const query = { role: 'developer' };
+
+    if (search) {
+      const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      query.$or = [
+        { name: { $regex: escapedSearch, $options: 'i' } },
+        { email: { $regex: escapedSearch, $options: 'i' } },
+      ];
+    }
+
+    const users = await User.find(query)
       .select('-password')
-      .populate('joinedProjects', 'name');
+      .populate('joinedProjects', 'name')
+      .sort({ createdAt: -1 });
 
     res.json({ users });
   } catch (error) {

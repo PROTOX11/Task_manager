@@ -5,6 +5,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { AuthProvider } from "@/lib/auth-context";
 import { DataProvider } from "@/lib/data-context";
+import { RouteSkeleton } from "@/components/boneyard/route-skeleton";
 import { ThemeProvider } from "@/components/theme-provider";
 
 const _geist = Geist({ subsets: ["latin"] });
@@ -26,7 +27,7 @@ export default function RootLayout({
         <AuthProvider>
           <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
             <DataProvider>
-              {children}
+              <RouteSkeleton>{children}</RouteSkeleton>
               <Toaster position="top-right" richColors />
             </DataProvider>
           </ThemeProvider>

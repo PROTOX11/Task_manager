@@ -86,10 +86,8 @@ export function TaskDialog({ task, project, onClose }: TaskDialogProps) {
   }, [mentionQuery, projectMembers]);
 
   if (!task) return null;
-  const canEditTask =
-    user?.role === "admin" ||
-    task.reporter.id === user?.id ||
-    task.assignee?.id === user?.id;
+  const isAdmin = user?.role === "admin";
+  const canEditTask = isAdmin;
   const canComment = Boolean(user);
 
   const formatDateForInput = (value?: string) => {
@@ -153,6 +151,10 @@ export function TaskDialog({ task, project, onClose }: TaskDialogProps) {
   };
 
   const handleStatusChange = async (status: Task["status"]) => {
+    if (!isAdmin) {
+      toast.error("You cannot modify this task.");
+      return;
+    }
     await updateTask(task.id, { status });
     toast.success("Status updated");
   };

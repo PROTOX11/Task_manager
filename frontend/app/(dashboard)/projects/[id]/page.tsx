@@ -18,6 +18,7 @@ export default function ProjectPage() {
   const { getProjectById } = useData();
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [createTaskPanelId, setCreateTaskPanelId] = useState<string | null>(null);
+  const [showSkeleton, setShowSkeleton] = useState(true);
 
   const project = getProjectById(params.id as string);
   const taskFromRoute = searchParams.get("task")?.trim() || "";
@@ -44,7 +45,12 @@ export default function ProjectPage() {
     }
   }, [project, selectedTaskId]);
 
-  if (!project) {
+  useEffect(() => {
+    const timer = window.setTimeout(() => setShowSkeleton(false), 420);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  if (!project && !showSkeleton) {
     return (
       <div className="flex h-[50vh] items-center justify-center">
         <div className="text-center">
@@ -64,29 +70,50 @@ export default function ProjectPage() {
   }
 
   return (
-    <Skeleton name="project-page" loading={false}>
-      <div className="space-y-6">
-        <ProjectHeader project={project} />
-        <KanbanBoard
-          project={project}
-          onTaskClick={(task) => setSelectedTaskId(task.id)}
-          onAddTask={setCreateTaskPanelId}
-        />
+    <Skeleton
+      name="project-page"
+      loading={showSkeleton}
+      animate="shimmer"
+      transition={320}
+      fixture={
+        <div className="space-y-6">
+          <div className="h-24 w-full rounded-3xl bg-muted/30" />
+          <div className="h-[28rem] w-full rounded-3xl bg-muted/30" />
+          <div className="h-64 w-full rounded-3xl bg-muted/30" />
+        </div>
+      }
+      fallback={
+        <div className="space-y-4">
+          <div className="h-24 w-full rounded-3xl bg-muted/30" />
+          <div className="h-[28rem] w-full rounded-3xl bg-muted/30" />
+          <div className="h-64 w-full rounded-3xl bg-muted/30" />
+        </div>
+      }
+    >
+      {project ? (
+        <div className="space-y-6">
+          <ProjectHeader project={project} />
+          <KanbanBoard
+            project={project}
+            onTaskClick={(task) => setSelectedTaskId(task.id)}
+            onAddTask={setCreateTaskPanelId}
+          />
 
-        <ProjectCollaborationPanel project={project} />
+          <ProjectCollaborationPanel project={project} />
 
-        <TaskDialog
-          task={selectedTask}
-          project={project}
-          onClose={() => setSelectedTaskId(null)}
-        />
+          <TaskDialog
+            task={selectedTask}
+            project={project}
+            onClose={() => setSelectedTaskId(null)}
+          />
 
-        <CreateTaskDialog
-          projectId={project.id}
-          panelId={createTaskPanelId}
-          onClose={() => setCreateTaskPanelId(null)}
-        />
-      </div>
+          <CreateTaskDialog
+            projectId={project.id}
+            panelId={createTaskPanelId}
+            onClose={() => setCreateTaskPanelId(null)}
+          />
+        </div>
+      ) : null}
     </Skeleton>
   );
 }

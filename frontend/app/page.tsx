@@ -3,6 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { GoogleAuthButton } from "@/components/google-auth-button";
+import { BrandLogo } from "@/components/brand-logo";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import { CSSProperties, FormEvent, useCallback, useEffect, useState } from "react";
@@ -170,7 +171,7 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,#f4efed_0%,#fbfaf9_46%,#ffffff_100%)] px-4 py-4 text-[#2f2f30] sm:px-6 lg:px-8">
-      <div className="landing-stage mx-auto max-w-[1400px]">
+        <div className="landing-stage mx-auto max-w-[1400px]">
         {introStage !== "ready" && (
           <div className="pointer-events-none absolute inset-0 z-30 overflow-hidden">
             <div className={`absolute inset-0 bg-[radial-gradient(circle_at_top,#f0e9e4_0%,rgba(250,248,247,0.92)_48%,rgba(255,255,255,0.76)_100%)] transition-opacity duration-500 ${introStage === "loading" ? "opacity-100" : "opacity-0"}`} />
@@ -218,7 +219,7 @@ export default function HomePage() {
                 <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.24em] text-[#8a8383]">
                   <Sparkles className="h-4 w-4" /> AI Project Workspace
                 </div>
-                <h1 className="text-[clamp(2rem,3.35vw,3.3rem)] font-black leading-[0.95] tracking-[-0.05em] text-[#6c6868]">Tickzen<span className="ml-3 font-bold text-[#a29b9d]">- AI Project Management</span></h1>
+                <BrandLogo className="h-20 w-[min(24rem,72vw)] bg-transparent p-0 shadow-none ring-0 dark:bg-transparent dark:shadow-none dark:ring-0 sm:h-24 sm:w-[min(30rem,60vw)]" priority sizes="(max-width: 768px) 70vw, 420px" imageClassName="dark:brightness-100 dark:contrast-105" />
                 <p className="mt-2 text-[clamp(1rem,1.35vw,1.4rem)] text-[#383536]">Build Faster. Manage Smarter. Deliver Better</p>
               </section>
             </div>
@@ -415,7 +416,7 @@ export default function HomePage() {
           </section>
         </div>
 
-      </div>
+        </div>
     </main>
   );
 }

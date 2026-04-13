@@ -20,6 +20,10 @@ const taskSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Panel'
   },
+  order: {
+    type: Number,
+    default: 0
+  },
   assignedDeveloper: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
