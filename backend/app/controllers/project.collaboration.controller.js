@@ -1,6 +1,8 @@
 import Project from '../models/Project.js';
 import ProjectChatMessage from '../models/ProjectChatMessage.js';
 import ProjectMeeting from '../models/ProjectMeeting.js';
+import Notification from '../models/Notification.js';
+import { emitToUser } from '../services/realtime.service.js';
 import {
   buildConversationFilter,
   createAndBroadcastProjectChatMessage,
@@ -253,6 +255,42 @@ export const createProjectMeeting = async (req, res) => {
 
     const populatedMeeting = await ProjectMeeting.findById(meeting._id)
       .populate('createdBy', 'name email role');
+
+    const recipientIds = Array.from(new Set([
+      project.createdBy?._id?.toString?.() || project.createdBy?.toString?.(),
+      ...(project.developers || []).map((member) => member?._id?.toString?.() || member?.toString?.()),
+    ].filter(Boolean))).filter((id) => id !== req.userId.toString());
+
+    if (recipientIds.length > 0) {
+      const notifications = await Notification.insertMany(
+        recipientIds.map((recipientId) => ({
+          userId: recipientId,
+          senderId: req.userId,
+          projectId,
+          type: 'meeting_reminder',
+          title: 'Meeting reminder',
+          message: `${title.trim()} is scheduled for ${new Date(scheduledFor).toLocaleString()}.`,
+          read: false
+        }))
+      );
+
+      for (const notification of notifications) {
+        emitToUser(notification.userId.toString(), 'notification:new', {
+          notification: {
+            _id: notification._id,
+            userId: notification.userId,
+            senderId: notification.senderId,
+            projectId: notification.projectId,
+            type: notification.type,
+            title: notification.title,
+            message: notification.message,
+            read: notification.read,
+            createdAt: notification.createdAt,
+            updatedAt: notification.updatedAt
+          }
+        });
+      }
+    }
 
     res.status(201).json({
       message: 'Meeting scheduled successfully',

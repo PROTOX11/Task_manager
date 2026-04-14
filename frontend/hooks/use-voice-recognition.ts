@@ -52,6 +52,8 @@ export function useVoiceRecognition(options: UseVoiceRecognitionOptions = {}) {
   const { lang = "en-US", onFinalResult } = options;
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const onFinalResultRef = useRef(onFinalResult);
+  const interimTranscriptRef = useRef("");
+  const finalizedRef = useRef(false);
   const [supported, setSupported] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState("");
@@ -100,11 +102,13 @@ export function useVoiceRecognition(options: UseVoiceRecognitionOptions = {}) {
       const nextTranscript = (finalTranscript || interimTranscript).trim();
       if (nextTranscript) {
         setTranscript(nextTranscript);
+        interimTranscriptRef.current = nextTranscript;
       }
 
       if (finalTranscript.trim()) {
         const cleaned = finalTranscript.trim();
         setTranscript(cleaned);
+        finalizedRef.current = true;
         onFinalResultRef.current?.(cleaned);
       }
     };
@@ -116,6 +120,11 @@ export function useVoiceRecognition(options: UseVoiceRecognitionOptions = {}) {
 
     recognition.onend = () => {
       setIsListening(false);
+      if (!finalizedRef.current && interimTranscriptRef.current.trim()) {
+        onFinalResultRef.current?.(interimTranscriptRef.current.trim());
+      }
+      finalizedRef.current = false;
+      interimTranscriptRef.current = "";
     };
 
     recognitionRef.current = recognition;
@@ -130,7 +139,13 @@ export function useVoiceRecognition(options: UseVoiceRecognitionOptions = {}) {
     if (!recognitionRef.current || isListening) return;
     setTranscript("");
     setError(null);
-    recognitionRef.current.start();
+    interimTranscriptRef.current = "";
+    finalizedRef.current = false;
+    try {
+      recognitionRef.current.start();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Voice input could not start.");
+    }
   }, [isListening]);
 
   const stopListening = useCallback(() => {

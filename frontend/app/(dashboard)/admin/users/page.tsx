@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { useAuth } from "@/lib/auth-context";
 import { apiRequest, ApiError } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -12,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
 import { Plus, Search } from "lucide-react";
 
@@ -90,8 +92,8 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState("");
-  const [addingDeveloperId, setAddingDeveloperId] = useState<string | null>(null);
-  const [addedDeveloperIds, setAddedDeveloperIds] = useState<string[]>([]);
+  const [invitingTarget, setInvitingTarget] = useState<{ projectId: string; developerId: string } | null>(null);
+  const [invitedDeveloperIdsByProject, setInvitedDeveloperIdsByProject] = useState<Record<string, string[]>>({});
 
   useEffect(() => {
     if (!isLoading && user && user.role !== "admin") {
@@ -129,6 +131,18 @@ export default function AdminUsersPage() {
       setSelectedProjectId(projects[0].id);
     }
   }, [projects, selectedProjectId]);
+
+  const selectedProject = useMemo(
+    () => projects.find((project) => project.id === selectedProjectId),
+    [projects, selectedProjectId]
+  );
+
+  const selectedProjectDeveloperIds = useMemo(
+    () => new Set((selectedProject?.developers || []).map((developer) => developer.id)),
+    [selectedProject]
+  );
+
+  const invitedDeveloperIds = invitedDeveloperIdsByProject[selectedProjectId] || [];
 
   useEffect(() => {
     if (isLoading || !user || user.role !== "admin") {
@@ -178,40 +192,46 @@ export default function AdminUsersPage() {
       return;
     }
 
-    if (addedDeveloperIds.includes(developer.id)) {
+    if (selectedProjectDeveloperIds.has(developer.id)) {
+      toast.info(`${developer.name} is already in this project.`);
       return;
     }
 
-    const selectedProject = projects.find((project) => project.id === selectedProjectId);
+    if (invitedDeveloperIds.includes(developer.id)) {
+      return;
+    }
 
     try {
-      setAddingDeveloperId(developer.id);
-      const invite = (force = false) =>
-        apiRequest(`/projects/${selectedProjectId}/invite`, {
-          method: "POST",
-          body: JSON.stringify({
-            developerId: developer.id,
-            message: `You have been invited to join ${selectedProject?.name || "this project"}`,
-            force,
-          }),
-        });
-
-      try {
-        await invite();
-      } catch (error) {
-        if (error instanceof ApiError && error.status === 409) {
-          await invite(true);
-        } else {
-          throw error;
-        }
-      }
+      setInvitingTarget({ projectId: selectedProjectId, developerId: developer.id });
+      await apiRequest(`/projects/${selectedProjectId}/invite`, {
+        method: "POST",
+        body: JSON.stringify({
+          developerId: developer.id,
+          message: `You have been invited to join ${selectedProject?.name || "this project"}`,
+        }),
+      });
       toast.success(`Invitation sent to ${developer.name}`);
-      setAddedDeveloperIds((current) => (current.includes(developer.id) ? current : [...current, developer.id]));
+      setInvitedDeveloperIdsByProject((current) => ({
+        ...current,
+        [selectedProjectId]: current[selectedProjectId]?.includes(developer.id)
+          ? current[selectedProjectId]
+          : [...(current[selectedProjectId] || []), developer.id],
+      }));
     } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        toast.info(`${developer.name} is already in this project.`);
+        setInvitedDeveloperIdsByProject((current) => ({
+          ...current,
+          [selectedProjectId]: current[selectedProjectId]?.includes(developer.id)
+            ? current[selectedProjectId]
+            : [...(current[selectedProjectId] || []), developer.id],
+        }));
+        return;
+      }
       const message = error instanceof Error ? error.message : "Unable to add developer to project";
       toast.error(message);
     } finally {
-      setAddingDeveloperId(null);
+      setInvitingTarget(null);
     }
   };
 
@@ -237,6 +257,19 @@ export default function AdminUsersPage() {
   const getInitials = (name: string) => {
     const { firstName, lastName } = splitName(name);
     return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
+  };
+
+  const getInviteState = (developerId: string) => {
+    if (selectedProjectDeveloperIds.has(developerId)) {
+      return "member" as const;
+    }
+    if (invitedDeveloperIds.includes(developerId)) {
+      return "invited" as const;
+    }
+    if (invitingTarget?.projectId === selectedProjectId && invitingTarget.developerId === developerId) {
+      return "loading" as const;
+    }
+    return "idle" as const;
   };
 
   if (errorMessage) {
@@ -308,49 +341,63 @@ export default function AdminUsersPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredUsers.map((u) => (
-                <TableRow key={u.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                      <Avatar>
-                        <AvatarFallback>{getInitials(u.name)}</AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <p className="font-medium">{u.name}</p>
+              {filteredUsers.map((u) => {
+                const inviteState = getInviteState(u.id);
+                const isBusy = inviteState === "loading";
+                const isLocked = inviteState === "member" || inviteState === "invited";
+                const buttonLabel =
+                  inviteState === "member"
+                    ? "In project"
+                    : inviteState === "invited"
+                      ? "Invited"
+                      : isBusy
+                        ? "Inviting..."
+                        : "Invite";
+
+                return (
+                  <TableRow key={u.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <Avatar>
+                          <AvatarFallback>{getInitials(u.name)}</AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <p className="font-medium">{u.name}</p>
+                        </div>
                       </div>
-                    </div>
-                  </TableCell>
-                  <TableCell>{u.email}</TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground">{u.code}</TableCell>
-                  <TableCell>
-                    <Badge variant={u.role === "admin" ? "default" : "secondary"}>
-                      {u.role === "admin" ? "Administrator" : "Developer"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {formatJoinedDate(u.createdAt)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void addDeveloperToProject(u)}
-                      disabled={
-                        !selectedProjectId ||
-                        addedDeveloperIds.includes(u.id) ||
-                        addingDeveloperId === u.id
-                      }
-                    >
-                      <Plus className="mr-2 h-4 w-4" />
-                      {addedDeveloperIds.includes(u.id)
-                        ? "Added"
-                        : addingDeveloperId === u.id
-                          ? "Adding..."
-                          : "Add"}
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
+                    </TableCell>
+                    <TableCell>{u.email}</TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{u.code}</TableCell>
+                    <TableCell>
+                      <Badge variant={u.role === "admin" ? "default" : "secondary"}>
+                        {u.role === "admin" ? "Administrator" : "Developer"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {formatJoinedDate(u.createdAt)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void addDeveloperToProject(u)}
+                        disabled={!selectedProjectId || isBusy || isLocked}
+                        className={cn(
+                          "transition-all duration-200 ease-in-out disabled:cursor-not-allowed",
+                          isLocked && "bg-muted/40 text-muted-foreground shadow-none"
+                        )}
+                      >
+                        {isBusy ? (
+                          <Spinner className="mr-2 h-4 w-4" />
+                        ) : (
+                          <Plus className="mr-2 h-4 w-4" />
+                        )}
+                        {buttonLabel}
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
               {filteredUsers.length === 0 && !loading && (
                 <TableRow>
                   <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">

@@ -177,12 +177,17 @@ export function ProjectHeader({ project }: ProjectHeaderProps) {
 
   const handleInvite = async () => {
     if (!inviteEmail.trim()) return;
-    await sendInvitation(project.id, inviteEmail, inviteMessage);
-    toast.success("Invitation sent!");
-    setShowInviteDialog(false);
-    setInviteEmail("");
-    setInviteMessage("");
-    setDeveloperSearch("");
+    try {
+      await sendInvitation(project.id, inviteEmail, inviteMessage);
+      toast.success("Invitation sent!");
+      setShowInviteDialog(false);
+      setInviteEmail("");
+      setInviteMessage("");
+      setDeveloperSearch("");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to send invitation";
+      toast.error(message);
+    }
   };
 
   const handleDelete = async () => {

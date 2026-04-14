@@ -61,7 +61,7 @@ export function KanbanBoard({ project, onTaskClick, onAddTask }: KanbanBoardProp
   const [mobileDraggedTaskId, setMobileDraggedTaskId] = useState<string | null>(null);
   const [mobileDraggedTaskPosition, setMobileDraggedTaskPosition] = useState<{ dx: number; dy: number } | null>(null);
   const [mobileDraggedTaskOrigin, setMobileDraggedTaskOrigin] = useState<{ left: number; top: number; width: number } | null>(null);
-  const [mobileDraggedTaskOffset, setMobileDraggedTaskOffset] = useState<{ x: number; y: number } | null>(null);
+  const [mobileDragPendingTaskId, setMobileDragPendingTaskId] = useState<string | null>(null);
   const [mobileDraggedPanelId, setMobileDraggedPanelId] = useState<string | null>(null);
   const [mobileDropTarget, setMobileDropTarget] = useState<{
     panelId: string;
@@ -381,7 +381,6 @@ export function KanbanBoard({ project, onTaskClick, onAddTask }: KanbanBoardProp
     setMobileDraggedTaskId(null);
     setMobileDraggedTaskPosition(null);
     setMobileDraggedTaskOrigin(null);
-    setMobileDraggedTaskOffset(null);
     setSuppressTaskClick(false);
   };
 
@@ -450,7 +449,6 @@ export function KanbanBoard({ project, onTaskClick, onAddTask }: KanbanBoardProp
     await addPanel(project.id, newPanelName);
     setNewPanelName("");
     setAddingPanel(false);
-    toast.success("Panel added");
   };
 
   const handleUpdatePanel = async (panelId: string) => {
@@ -458,12 +456,10 @@ export function KanbanBoard({ project, onTaskClick, onAddTask }: KanbanBoardProp
     await updatePanel(project.id, panelId, { name: editingPanelName });
     setEditingPanelId(null);
     setEditingPanelName("");
-    toast.success("Panel updated");
   };
 
   const handleDeletePanel = async (panelId: string) => {
     await deletePanel(project.id, panelId);
-    toast.success("Panel deleted");
   };
 
   const handleTaskDragStart = (task: Task) => {
@@ -483,7 +479,6 @@ export function KanbanBoard({ project, onTaskClick, onAddTask }: KanbanBoardProp
     setMobileDraggedTaskId(null);
     setMobileDraggedTaskPosition(null);
     setMobileDraggedTaskOrigin(null);
-    setMobileDraggedTaskOffset(null);
     setSuppressTaskClick(true);
   };
 
@@ -509,7 +504,6 @@ export function KanbanBoard({ project, onTaskClick, onAddTask }: KanbanBoardProp
     if (movingTask && movingTask.panelId !== panelId) {
       try {
         await moveTask(movingTask.id, panelId);
-        toast.success("Task moved");
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unable to move task";
         toast.error(message);
@@ -541,7 +535,6 @@ export function KanbanBoard({ project, onTaskClick, onAddTask }: KanbanBoardProp
     setPanelOrder(nextOrder);
 
     await reorderPanels(project.id, nextOrder);
-    toast.success("Panels reordered");
     handlePanelDragEnd();
   };
 
@@ -555,7 +548,6 @@ export function KanbanBoard({ project, onTaskClick, onAddTask }: KanbanBoardProp
     if (movingTask.panelId !== panelId) {
       try {
         await moveTask(movingTask.id, panelId);
-        toast.success("Task moved");
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unable to move task";
         toast.error(message);
@@ -658,7 +650,6 @@ export function KanbanBoard({ project, onTaskClick, onAddTask }: KanbanBoardProp
     }
 
     await moveTask(taskId, target.panelId, targetOrder);
-    toast.success(samePanel ? "Task rearranged" : "Task moved");
   };
 
   commitMobileTaskDropRef.current = commitMobileTaskDrop;
@@ -669,6 +660,8 @@ export function KanbanBoard({ project, onTaskClick, onAddTask }: KanbanBoardProp
 
     event.preventDefault();
     event.stopPropagation();
+
+    setMobileDragPendingTaskId(task.id);
 
     mobileDragPointerRef.current = {
       pointerId: event.pointerId,
@@ -696,16 +689,9 @@ export function KanbanBoard({ project, onTaskClick, onAddTask }: KanbanBoardProp
             }
           : null
       );
-      setMobileDraggedTaskOffset(
-        rect
-          ? {
-              x: event.clientX - rect.left,
-              y: event.clientY - rect.top,
-            }
-          : { x: 0, y: 0 }
-      );
       setPanelDropTargetId(panelId);
       setSuppressTaskClick(true);
+      setMobileDragPendingTaskId(null);
       mobileDragTimerRef.current = null;
     }, 150);
   };
@@ -833,12 +819,12 @@ export function KanbanBoard({ project, onTaskClick, onAddTask }: KanbanBoardProp
 
       mobileDragPointerRef.current = null;
       mobilePanelDragPointerRef.current = null;
+      setMobileDragPendingTaskId(null);
       setMobileDropTarget(null);
       setPanelDropTargetId(null);
       setMobileDraggedTaskId(null);
       setMobileDraggedTaskPosition(null);
       setMobileDraggedTaskOrigin(null);
-      setMobileDraggedTaskOffset(null);
       setMobileDraggedPanelId(null);
       setMobilePanelDropTargetId(null);
 
@@ -894,7 +880,6 @@ export function KanbanBoard({ project, onTaskClick, onAddTask }: KanbanBoardProp
               const adjustedTargetIndex = fromIndex < targetIndex ? targetIndex - 1 : targetIndex;
               nextOrder.splice(adjustedTargetIndex, 0, movingPanelId);
               await reorderPanelsRef.current(projectIdRef.current, nextOrder);
-              toast.success("Panels reordered");
             }
           } catch (error) {
             const message = error instanceof Error ? error.message : "Unable to reorder panels";
@@ -1217,9 +1202,8 @@ export function KanbanBoard({ project, onTaskClick, onAddTask }: KanbanBoardProp
                 mobileDraggedTaskId={mobileDraggedTaskId}
                 mobileDraggedTaskPosition={mobileDraggedTaskPosition}
                 mobileDraggedTaskOrigin={mobileDraggedTaskOrigin}
-                mobileDraggedTaskOffset={mobileDraggedTaskOffset}
                 mobileDropTarget={mobileDropTarget}
-                panelOptions={sortedPanels.map((panel) => ({ id: panel.id, name: panel.name }))}
+                mobileDragPendingTaskId={mobileDragPendingTaskId}
                 suppressTaskClick={suppressTaskClick}
                 onMobileTaskPointerDown={startMobileTaskDrag}
                 taskMoveModeTaskId={taskMoveTaskId}
@@ -1356,9 +1340,8 @@ export function KanbanBoard({ project, onTaskClick, onAddTask }: KanbanBoardProp
                 mobileDraggedTaskId={mobileDraggedTaskId}
                 mobileDraggedTaskPosition={mobileDraggedTaskPosition}
                 mobileDraggedTaskOrigin={mobileDraggedTaskOrigin}
-                mobileDraggedTaskOffset={mobileDraggedTaskOffset}
                 mobileDropTarget={mobileDropTarget}
-                panelOptions={sortedPanels.map((panel) => ({ id: panel.id, name: panel.name }))}
+                mobileDragPendingTaskId={mobileDragPendingTaskId}
                 suppressTaskClick={suppressTaskClick}
                 onMobileTaskPointerDown={startMobileTaskDrag}
                 taskMoveModeTaskId={taskMoveTaskId}
@@ -1509,9 +1492,8 @@ interface PanelColumnProps {
   mobileDraggedTaskId: string | null;
   mobileDraggedTaskPosition: { dx: number; dy: number } | null;
   mobileDraggedTaskOrigin: { left: number; top: number; width: number } | null;
-  mobileDraggedTaskOffset: { x: number; y: number } | null;
   mobileDropTarget: { panelId: string; taskId?: string; position?: "before" | "after" } | null;
-  panelOptions: Array<{ id: string; name: string }>;
+  mobileDragPendingTaskId: string | null;
   suppressTaskClick: boolean;
   onMobileTaskPointerDown: (task: Task, panelId: string, event: ReactPointerEvent<HTMLElement>) => void;
   taskMoveModeTaskId: string | null;
@@ -1563,9 +1545,8 @@ function PanelColumn({
   mobileDraggedTaskId,
   mobileDraggedTaskPosition,
   mobileDraggedTaskOrigin,
-  mobileDraggedTaskOffset,
   mobileDropTarget,
-  panelOptions,
+  mobileDragPendingTaskId,
   suppressTaskClick,
   onMobileTaskPointerDown,
   taskMoveModeTaskId,
@@ -1710,7 +1691,7 @@ function PanelColumn({
             : isCompactOverview
             ? "clamp(4.5rem, 5vw, 5.5rem)"
             : isMobileOverview
-            ? "30%"
+            ? "6%"
             : isMobileView && layout === "horizontal"
             ? "40%"
             : layout === "horizontal"
@@ -1728,7 +1709,7 @@ function PanelColumn({
           : isCompactOverview
             ? "4.5rem"
             : isMobileOverview
-            ? "30%"
+            ? "6%"
             : isMobileView && layout === "horizontal"
             ? "40%"
             : layout === "horizontal"
@@ -1739,7 +1720,7 @@ function PanelColumn({
           : isCompactOverview
             ? "5.5rem"
             : isMobileOverview
-            ? "30%"
+            ? "6%"
             : isMobileView && layout === "horizontal"
             ? "40%"
             : layout === "horizontal"
@@ -1924,6 +1905,7 @@ function PanelColumn({
                   panelId={panel.id}
                   isMobileView={isMobileView}
                   isMobileDragging={mobileDraggedTaskId === task.id}
+                  isMobileDragPending={mobileDragPendingTaskId === task.id}
                   isMobileDropTarget={mobileDropTarget?.panelId === panel.id && mobileDropTarget.taskId === task.id}
                   mobileDropPosition={mobileDropTarget?.panelId === panel.id && mobileDropTarget.taskId === task.id ? mobileDropTarget.position : undefined}
                   suppressClick={suppressTaskClick}
@@ -1935,8 +1917,6 @@ function PanelColumn({
                   taskItemRefs={taskItemRefs}
                   mobileDraggedTaskPosition={mobileDraggedTaskPosition}
                   mobileDraggedTaskOrigin={mobileDraggedTaskOrigin}
-                  mobileDraggedTaskOffset={mobileDraggedTaskOffset}
-                  panelOptions={panelOptions}
                 />
               ))}
           </div>
@@ -1981,6 +1961,7 @@ interface TaskCardProps {
   panelId: string;
   isMobileView: boolean;
   isMobileDragging: boolean;
+  isMobileDragPending: boolean;
   isMobileDropTarget: boolean;
   mobileDropPosition?: "before" | "after";
   suppressClick: boolean;
@@ -1992,8 +1973,6 @@ interface TaskCardProps {
   taskItemRefs: RefObject<Map<string, HTMLDivElement | null>>;
   mobileDraggedTaskPosition: { dx: number; dy: number } | null;
   mobileDraggedTaskOrigin: { left: number; top: number; width: number } | null;
-  mobileDraggedTaskOffset: { x: number; y: number } | null;
-  panelOptions: Array<{ id: string; name: string }>;
 }
 
 function TaskCard({
@@ -2005,6 +1984,7 @@ function TaskCard({
   panelId,
   isMobileView,
   isMobileDragging,
+  isMobileDragPending,
   isMobileDropTarget,
   mobileDropPosition,
   suppressClick,
@@ -2016,13 +1996,11 @@ function TaskCard({
   taskItemRefs,
   mobileDraggedTaskPosition,
   mobileDraggedTaskOrigin,
-  mobileDraggedTaskOffset,
-  panelOptions,
 }: TaskCardProps) {
-  const [showPanelPopup, setShowPanelPopup] = useState(false);
   const completedSubtasks = task.subtasks.filter((s) => s.completed).length;
   const isOverdue = task.dueDate && isPast(parseISO(task.dueDate)) && task.status !== "done";
   const canDrag = canModifyTask;
+  const isMobileDragActive = isMobileDragging || isMobileDragPending;
 
   return (
     <Card
@@ -2034,7 +2012,7 @@ function TaskCard({
       className={`border-l-4 transition-all duration-200 hover:shadow-md ${
         canDrag ? "cursor-pointer" : "cursor-not-allowed opacity-80"
       } ${getPriorityColor(task.priority)} ${
-        isMobileDragging ? "scale-[0.98] opacity-70 ring-2 ring-primary/30" : ""
+        isMobileDragActive ? "scale-[0.98] opacity-50 ring-2 ring-primary/30" : ""
       } ${
         isMobileDropTarget ? "ring-2 ring-primary/50" : ""
       } ${activeTaskId === task.id ? "ring-2 ring-primary/70 ring-offset-2" : ""} ${isMobileView ? "select-none" : ""} ${
@@ -2044,18 +2022,18 @@ function TaskCard({
         isMobileDragging && mobileDraggedTaskPosition
           ? {
               position: "fixed",
-              left: mobileDraggedTaskPosition.dx - (mobileDraggedTaskOffset?.x ?? 0),
-              top: mobileDraggedTaskPosition.dy - (mobileDraggedTaskOffset?.y ?? 0),
+              left: mobileDraggedTaskPosition.dx,
+              top: mobileDraggedTaskPosition.dy,
               width: mobileDraggedTaskOrigin?.width ?? undefined,
-              transform: "none",
-              opacity: 0.7,
+              transform: "translate(-50%, -50%) scale(0.98)",
+              opacity: 0.75,
               zIndex: 9999,
               pointerEvents: "none",
             }
           : undefined
       }
       onClick={() => {
-        if (suppressClick || (isMobileView && isMobileDragging) || taskMoveModeTaskId) return;
+        if (suppressClick || (isMobileView && isMobileDragActive) || taskMoveModeTaskId) return;
         onClick();
       }}
       draggable={canDrag}
@@ -2064,50 +2042,21 @@ function TaskCard({
       <CardContent className={`task ${isMobileView ? "text-center" : ""}`}>
         <div className={`relative flex items-start gap-2 ${isMobileView ? "flex-col items-center" : ""}`}>
           {isMobileView ? (
-            <div className="relative">
-              <button
-                type="button"
-                className={`inline-flex h-7 w-7 items-center justify-center rounded-md border border-border/60 bg-background/90 text-muted-foreground shadow-sm touch-none max-[767px]:h-8 max-[767px]:w-8 ${
-                  canDrag ? "" : "cursor-not-allowed opacity-60"
-                }`}
-                disabled={!canDrag}
-                onPointerDown={canDrag ? onMobilePointerDown : undefined}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  if (!canDrag || isMobileDragging) return;
-                  setShowPanelPopup((current) => !current);
-                }}
-                aria-label="Drag task"
-                title="Drag task"
-              >
-                <GripVertical className="h-4 w-4 max-[767px]:h-5 max-[767px]:w-5" />
-              </button>
-              {showPanelPopup && !isMobileDragging && (
-                <div className="popup absolute left-full top-0 z-50 ml-1.5 w-44 rounded-xl border bg-background p-1.5 shadow-lg">
-                  <p className="px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                    Move to
-                  </p>
-                  <div className="max-h-[250px] overflow-y-auto">
-                    {panelOptions.map((panelOption) => (
-                      <button
-                        key={panelOption.id}
-                        type="button"
-                        className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-sm transition hover:bg-muted/70"
-                        onClick={() => {
-                          setShowPanelPopup(false);
-                          if (panelOption.id !== panelId) {
-                            onMoveTaskToPanel(panelOption.id);
-                          }
-                        }}
-                      >
-                        <span className="truncate">{panelOption.name}</span>
-                        {panelOption.id === panelId ? <span className="text-xs text-muted-foreground">Current</span> : null}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
+            <button
+              type="button"
+              className={`inline-flex h-7 w-7 items-center justify-center rounded-md border border-border/60 bg-background/90 text-muted-foreground shadow-sm touch-none transition-all duration-200 max-[767px]:h-8 max-[767px]:w-8 ${
+                canDrag ? "active:scale-95" : "cursor-not-allowed opacity-60"
+              } ${isMobileDragActive ? "cursor-grabbing opacity-60" : ""}`}
+              disabled={!canDrag}
+              onPointerDown={canDrag ? onMobilePointerDown : undefined}
+              onClick={(event) => {
+                event.stopPropagation();
+              }}
+              aria-label="Drag task"
+              title="Drag task"
+            >
+              <GripVertical className="h-4 w-4 max-[767px]:h-5 max-[767px]:w-5" />
+            </button>
           ) : (
             <button
               type="button"

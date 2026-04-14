@@ -58,7 +58,7 @@ export function LoginForm() {
     <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <BrandLogo className="mx-auto mb-4 h-16 w-[9rem] sm:h-20 sm:w-[10.5rem]" priority sizes="180px" />
+          <BrandLogo className="mx-auto mb-4 h-[9.6rem] w-[21.6rem] sm:h-[12rem] sm:w-[25.2rem]" priority sizes="432px" />
           <CardTitle className="text-2xl">Welcome to Tickzen</CardTitle>
           <CardDescription>Sign in to manage your projects and tasks</CardDescription>
         </CardHeader>

@@ -2,6 +2,12 @@ import express from 'express';
 import { classifyIntent } from '../services/zentrixa.service.js';
 import { extractEntities } from '../utils/entityExtractor.js';
 import {
+  clearZentrixaNotifications,
+  getZentrixaMessages,
+  handleZentrixaMessage,
+  handleZentrixaConfirm,
+} from '../services/zentrixa-chat.service.js';
+import {
   createProject,
   inviteDeveloper,
 } from '../controllers/project.controller.js';
@@ -42,6 +48,11 @@ router.post('/', async (req, res) => {
     });
   }
 });
+
+router.post('/message', handleZentrixaMessage);
+router.post('/confirm', handleZentrixaConfirm);
+router.get('/messages', getZentrixaMessages);
+router.delete('/notifications', clearZentrixaNotifications);
 
 function createMockRes() {
   const state = {

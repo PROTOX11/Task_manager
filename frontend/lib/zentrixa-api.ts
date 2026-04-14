@@ -50,6 +50,38 @@ export interface ZentrixaDispatchResult {
   }>;
 }
 
+export interface ZentrixaMessageResult {
+  mode: "chat" | "command";
+  intent?: string;
+  command?: string;
+  type?: "CONFIRM" | "MESSAGE" | string;
+  executed: boolean;
+  reply: string;
+  message?: string;
+  data?: unknown;
+  task?: ZentrixaDispatchResult["task"];
+  projectId?: string | null;
+  projectName?: string | null;
+  requiresConfirmation?: boolean;
+  requiresClarification?: boolean;
+  payload?: Record<string, unknown> | null;
+  candidates?: ZentrixaDispatchResult["candidates"];
+  missing?: string[];
+  pendingCommand?: Record<string, unknown> | null;
+}
+
+export interface ZentrixaStoredMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  mode: "chat" | "command";
+  intent?: string;
+  projectId?: string | null;
+  taskId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ZentrixaContext {
   projectId?: string;
   taskId?: string;
@@ -131,6 +163,47 @@ export async function dispatchZentrixaCommand(payload: {
       deadline: payload.deadline,
     }),
   });
+}
+
+export async function sendZentrixaMessage(payload: {
+  text: string;
+  context?: ZentrixaContext;
+  taskId?: string;
+  projectId?: string;
+  entities?: Record<string, string | undefined>;
+}): Promise<ZentrixaMessageResult> {
+  return apiRequest<ZentrixaMessageResult>("/zentrixa/message", {
+    method: "POST",
+    body: JSON.stringify({
+      text: payload.text,
+      context: payload.context,
+      taskId: payload.taskId,
+      projectId: payload.projectId,
+      entities: payload.entities || {},
+    }),
+  });
+}
+
+export async function confirmZentrixaCommand(payload: {
+  confirmed: boolean;
+  text?: string;
+  payload: Record<string, unknown>;
+  context?: ZentrixaContext;
+}): Promise<ZentrixaMessageResult> {
+  return apiRequest<ZentrixaMessageResult>("/zentrixa/confirm", {
+    method: "POST",
+    body: JSON.stringify({
+      confirmed: payload.confirmed,
+      text: payload.text,
+      payload: payload.payload,
+      context: payload.context,
+    }),
+  });
+}
+
+export async function getZentrixaMessages(limit = 40): Promise<ZentrixaStoredMessage[]> {
+  const response = await apiRequest<{ messages: ZentrixaStoredMessage[] }>(`/zentrixa/messages?limit=${limit}`);
+  return response.messages || [];
 }
 
 export function summarizeParsedCommand(command: ZentrixaParsedCommand) {

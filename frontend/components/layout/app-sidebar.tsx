@@ -93,7 +93,7 @@ export function AppSidebar() {
     <Sidebar>
       <SidebarHeader className="border-b p-4">
         <Link href="/dashboard" className="flex items-center gap-2">
-          <BrandLogo className="h-12 w-[8.75rem] sm:h-14 sm:w-[9.75rem]" priority sizes="160px" />
+          <BrandLogo className="h-[4.8rem] w-[21rem] sm:h-[7rem] sm:w-[23.4rem]" priority sizes="384px" />
         </Link>
       </SidebarHeader>
 

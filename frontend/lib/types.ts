@@ -95,7 +95,19 @@ export interface Notification {
   sender?: User;
   taskId?: string;
   projectId?: string;
-  type: "due_date_updated" | "task_assigned" | "comment_mentioned" | "project_chat_dm";
+  type:
+    | "due_date_updated"
+    | "task_assigned"
+    | "comment_mentioned"
+    | "project_chat_dm"
+    | "meeting_reminder"
+    | "project_added"
+    | "task_overdue"
+    | "deadline_risk"
+    | "morning_briefing"
+    | "end_day_recap"
+    | "focus_summary"
+    | "need_help";
   title: string;
   message: string;
   read: boolean;

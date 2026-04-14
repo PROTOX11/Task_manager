@@ -219,7 +219,12 @@ export default function HomePage() {
                 <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.24em] text-[#8a8383]">
                   <Sparkles className="h-4 w-4" /> AI Project Workspace
                 </div>
-                <BrandLogo className="h-20 w-[min(24rem,72vw)] bg-transparent p-0 shadow-none ring-0 dark:bg-transparent dark:shadow-none dark:ring-0 sm:h-24 sm:w-[min(30rem,60vw)]" priority sizes="(max-width: 768px) 70vw, 420px" imageClassName="dark:brightness-100 dark:contrast-105" />
+                <BrandLogo
+                  className="h-[12rem] w-[min(57.6rem,72vw)] sm:h-[18rem] sm:w-[min(72rem,60vw)]"
+                  priority
+                  sizes="(max-width: 768px) 100vw, 1008px"
+                  imageClassName="dark:brightness-100 dark:contrast-105"
+                />
                 <p className="mt-2 text-[clamp(1rem,1.35vw,1.4rem)] text-[#383536]">Build Faster. Manage Smarter. Deliver Better</p>
               </section>
             </div>

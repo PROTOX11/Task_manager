@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useRef, useState, ReactNode } fro
 import type { Project, Panel, Task, ProjectRequest, Notification, User } from "./types";
 import { useAuth } from "./auth-context";
 import { apiRequest, ApiError, getSocketIoBaseUrl, getToken } from "./api";
-import { playInvitationSound, playNotificationSound } from "./notification-sounds";
+import { playInvitationSound, playZentrixaPing } from "./notification-sounds";
 import { io, Socket } from "socket.io-client";
 
 interface DataContextType {
@@ -31,6 +31,7 @@ interface DataContextType {
   respondToRequest: (requestId: string, accept: boolean) => Promise<void>;
   markNotificationRead: (notificationId: string) => Promise<void>;
   markAllNotificationsRead: () => Promise<void>;
+  clearNotifications: (notificationIds?: string[]) => Promise<void>;
   getProjectById: (id: string) => Project | undefined;
   getTaskById: (id: string) => Task | undefined;
   getMyTasks: () => Task[];
@@ -137,6 +138,18 @@ const mapNotification = (notification: any): Notification => ({
   createdAt: notification.createdAt || new Date().toISOString(),
   updatedAt: notification.updatedAt || notification.createdAt || new Date().toISOString(),
 });
+
+const shouldPingZentrixa = (notification: Notification) =>
+  [
+    "task_assigned",
+    "comment_mentioned",
+    "project_chat_dm",
+    "meeting_reminder",
+    "project_added",
+    "task_overdue",
+    "deadline_risk",
+    "need_help",
+  ].includes(notification.type);
 
 const mapProjectRequest = (request: any, viewer: User): ProjectRequest => ({
   id: request._id.toString(),
@@ -309,10 +322,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (loadedNotificationsRef.current) {
       for (const notification of nextNotifications) {
         if (!notification.read && !notificationIdsRef.current.has(notification.id)) {
-          playNotificationSound({
-            notification,
-            senderRole: notification.sender?.role,
-          });
+          if (shouldPingZentrixa(notification)) {
+            playZentrixaPing();
+          }
         }
       }
     }
@@ -345,10 +357,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
         return [mapped, ...current];
       });
       notificationIdsRef.current.add(mapped.id);
-      playNotificationSound({
-        notification: mapped,
-        senderRole: mapped.sender?.role,
-      });
+      if (shouldPingZentrixa(mapped)) {
+        playZentrixaPing();
+      }
     });
 
     socket.on("request:new", (payload: { request?: any }) => {
@@ -662,6 +673,34 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await loadNotifications();
   };
 
+  const clearNotifications = async (notificationIds?: string[]) => {
+    const clearedIds = Array.isArray(notificationIds) ? notificationIds.filter(Boolean) : [];
+    await apiRequest("/zentrixa/notifications", {
+      method: "DELETE",
+      body: JSON.stringify({ clearedIds }),
+    });
+
+    setNotifications((current) => {
+      if (clearedIds.length === 0) {
+        return current.filter((notification) => notification.read);
+      }
+      const cleared = new Set(clearedIds);
+      return current.filter((notification) => !cleared.has(notification.id));
+    });
+
+    const nextIds = new Set(notificationIdsRef.current);
+    if (clearedIds.length === 0) {
+      for (const notification of notifications) {
+        if (!notification.read) {
+          nextIds.delete(notification.id);
+        }
+      }
+    } else {
+      for (const id of clearedIds) nextIds.delete(id);
+    }
+    notificationIdsRef.current = nextIds;
+  };
+
   const toggleSubtask = async (taskId: string, subtaskId: string) => {
     const task = projects
       .flatMap((project) => project.panels)
@@ -725,28 +764,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const sendInvitation = async (projectId: string, email: string, message?: string) => {
     if (!user) return;
-    const project = projects.find((p) => p.id === projectId);
-    if (!project) return;
 
     const usersResponse = await apiRequest<{ users: Array<any> }>("/auth/users");
     const developer = (usersResponse.users || []).find((u) => u.email === email);
     if (!developer) throw new Error("Developer not found");
 
-    const invite = async (force = false) =>
-      apiRequest(`/projects/${projectId}/invite`, {
-        method: "POST",
-        body: JSON.stringify({ developerId: developer._id, message, force }),
-      });
-
-    try {
-      await invite();
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 409) {
-        await invite(true);
-      } else {
-        throw error;
-      }
-    }
+    await apiRequest(`/projects/${projectId}/invite`, {
+      method: "POST",
+      body: JSON.stringify({ developerId: developer._id, message }),
+    });
     await loadRequests();
   };
 
@@ -817,6 +843,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         respondToRequest,
         markNotificationRead,
         markAllNotificationsRead,
+        clearNotifications,
         getProjectById,
         getTaskById,
         getMyTasks,

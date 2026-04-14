@@ -98,6 +98,69 @@ export function extractEntities(text = "", intent = "unknown") {
     }
   }
 
+  if (intent === "add_member") {
+    const emailMatch = normalized.match(/\b([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b/);
+    const existingUserName = entities.user_name || "";
+    const existingProjectName = entities.project_name || "";
+    if (emailMatch?.[1]) {
+      entities.user_name = emailMatch[1];
+    }
+
+    const directPatterns = [
+      /(?:add|invite|assign)\s+(?:the\s+)?(.+?)\s+(?:to|into)\s+(?:the\s+)?(.+?)\s+project\b/i,
+      /(?:project|workspace)\s+(?:is\s+)?(.+?)(?:\s+and\b|\s+with\b|\s+for\b|$)/i,
+      /(?:person|user|member)\s+(?:is\s+)?(.+?)(?:\s+and\b|\s+with\b|\s+for\b|$)/i,
+      /(?:to|in)\s+(?:the\s+)?(.+?)\s+project\b/i,
+    ];
+
+    for (const pattern of directPatterns) {
+      const match = normalized.match(pattern);
+      if (!match) continue;
+
+      if (pattern === directPatterns[0]) {
+        const maybeUser = stripLeadingTokens(clean(match[1]));
+        const maybeProject = stripLeadingTokens(clean(match[2]));
+        if (maybeUser && (!entities.user_name || /(?:project|workspace|team)\b/i.test(existingUserName))) {
+          entities.user_name = maybeUser;
+        }
+        if (maybeProject && (!entities.project_name || /(?:person|user|member)\b/i.test(existingProjectName))) {
+          entities.project_name = maybeProject;
+        }
+        break;
+      }
+
+      if (pattern === directPatterns[1]) {
+        const maybeProject = stripLeadingTokens(clean(match[1]));
+        if (maybeProject && (!entities.project_name || /(?:person|user|member)\b/i.test(existingProjectName))) {
+          entities.project_name = maybeProject;
+        }
+        continue;
+      }
+
+      if (pattern === directPatterns[2]) {
+        const maybeUser = stripLeadingTokens(clean(match[1]));
+        if (maybeUser && (!entities.user_name || /(?:project|workspace|team)\b/i.test(existingUserName))) {
+          entities.user_name = maybeUser;
+        }
+        continue;
+      }
+
+      if (pattern === directPatterns[3]) {
+        const maybeProject = stripLeadingTokens(clean(match[1]));
+        if (maybeProject && (!entities.project_name || /(?:person|user|member)\b/i.test(existingProjectName))) {
+          entities.project_name = maybeProject;
+        }
+      }
+    }
+
+    if (entities.project_name) {
+      entities.project_name = entities.project_name
+        .replace(/\b(project|workspace|team)\b$/i, "")
+        .replace(/^(the|a|an)\s+/i, "")
+        .trim();
+    }
+  }
+
   if (["move_task", "update_deadline"].includes(intent)) {
     const statusText = extractWithPatterns(normalized, statusPatterns);
     if (statusText) {

@@ -174,7 +174,7 @@ export const updateProject = async (req, res) => {
 export const inviteDeveloper = async (req, res) => {
   try {
     const { id } = req.params;
-    const { developerId, userId, message, force = false } = req.body;
+    const { developerId, userId, message } = req.body;
     const targetDeveloperId = developerId || userId;
 
     const project = await Project.findById(id);
@@ -197,8 +197,9 @@ export const inviteDeveloper = async (req, res) => {
       return res.status(404).json({ message: 'Developer not found' });
     }
 
-    const isAlreadyMember = project.developers.some((memberId) => memberId.toString() === targetDeveloperId.toString());
-    if (isAlreadyMember && !force) {
+    const projectDevelopers = Array.isArray(project.developers) ? project.developers : [];
+    const isAlreadyMember = projectDevelopers.some((memberId) => memberId.toString() === targetDeveloperId.toString());
+    if (isAlreadyMember) {
       return res.status(409).json({ message: 'Developer is already in this project' });
     }
 
@@ -207,37 +208,42 @@ export const inviteDeveloper = async (req, res) => {
       developerId: targetDeveloperId
     });
 
-    const requestData = {
+    if (existingRequest?.status === 'pending') {
+      return res.status(409).json({ message: 'Invitation already exists for this developer' });
+    }
+
+    if (existingRequest) {
+      await ProjectRequest.deleteOne({ _id: existingRequest._id });
+    }
+
+    const request = await ProjectRequest.create({
       projectId: id,
       developerId: targetDeveloperId,
       senderId: req.userId,
       status: 'pending',
       message: message || `You have been invited to join ${project.name}`
-    };
+    });
 
-    const request = await ProjectRequest.findOneAndUpdate(
-      { projectId: id, developerId: targetDeveloperId },
-      { $set: requestData },
-      {
-        new: true,
-        upsert: true,
-        setDefaultsOnInsert: true
+    emitToUser(developer._id.toString(), 'request:new', {
+      request: {
+        _id: request._id.toString(),
+        projectId: id,
+        developerId: targetDeveloperId,
+        senderId: req.userId.toString(),
+        status: request.status,
+        message: request.message
       }
-    );
-
-    const populatedRequest = await ProjectRequest.findById(request._id)
-      .populate('projectId', 'name description')
-      .populate('senderId', 'name email role');
-
-    if (!existingRequest || existingRequest.status !== 'pending') {
-      emitToUser(developer._id.toString(), 'request:new', {
-        request: populatedRequest
-      });
-    }
+    });
 
     res.status(201).json({
-      message: existingRequest ? 'Invitation refreshed successfully' : 'Invitation sent successfully',
-      request: populatedRequest
+      message: 'Invitation sent successfully',
+      request: {
+        id: request._id.toString(),
+        projectId: id,
+        developerId: targetDeveloperId,
+        status: request.status,
+        message: request.message
+      }
     });
   } catch (error) {
     if (error?.code === 11000) {
@@ -310,15 +316,21 @@ export const removeProjectMember = async (req, res) => {
       return res.status(404).json({ message: 'Member not found' });
     }
 
-    const isMember = project.developers.some((dev) => dev.toString() === memberId.toString());
+    const projectDevelopers = Array.isArray(project.developers) ? project.developers : [];
+    const isMember = projectDevelopers.some((dev) => dev.toString() === memberId.toString());
     if (!isMember) {
       return res.status(400).json({ message: 'User is not a member of this project' });
     }
 
-    project.developers = project.developers.filter(
+    project.developers = projectDevelopers.filter(
       (dev) => dev.toString() !== memberId.toString()
     );
     await project.save();
+
+    await ProjectRequest.deleteMany({
+      projectId: id,
+      developerId: memberId
+    });
 
     await User.findByIdAndUpdate(memberId, {
       $pull: { joinedProjects: id }

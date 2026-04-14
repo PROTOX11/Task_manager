@@ -1,6 +1,8 @@
 import ProjectRequest from '../models/ProjectRequest.js';
 import Project from '../models/Project.js';
 import User from '../models/User.js';
+import Notification from '../models/Notification.js';
+import { emitToUser } from '../services/realtime.service.js';
 
 // Get pending requests for current developer
 export const getMyRequests = async (req, res) => {
@@ -73,6 +75,33 @@ export const acceptRequest = async (req, res) => {
     const project = await Project.findById(request.projectId)
       .populate('developers', 'name email')
       .populate('createdBy', 'name email');
+
+    if (project) {
+      const notification = await Notification.create({
+        userId: req.userId,
+        senderId: request.senderId,
+        projectId: request.projectId,
+        type: 'project_added',
+        title: 'Project added to your workspace',
+        message: `You’re now part of ${project.name}.`,
+        read: false
+      });
+
+      emitToUser(req.userId.toString(), 'notification:new', {
+        notification: {
+          _id: notification._id,
+          userId: notification.userId,
+          senderId: notification.senderId,
+          projectId: notification.projectId,
+          type: notification.type,
+          title: notification.title,
+          message: notification.message,
+          read: notification.read,
+          createdAt: notification.createdAt,
+          updatedAt: notification.updatedAt
+        }
+      });
+    }
 
     res.json({
       message: 'Invitation accepted successfully',
