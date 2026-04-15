@@ -31,7 +31,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const envPath = path.join(__dirname, '.env');
 
-dotenv.config();
+dotenv.config({ path: envPath });
 
 mongoose.set('bufferCommands', false);
 
@@ -206,7 +206,5 @@ async function startServer() {
 }
 
 startServer();
-
-console.log("MONGO URI:", process.env.MONGODB_URI);
 
 export default app;

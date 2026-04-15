@@ -57,14 +57,14 @@ export default function InvitationsPage() {
             {pendingRequests.map((request) => (
               <div
                 key={request.id}
-                className="flex items-start gap-4 rounded-lg border p-4"
+                className="flex flex-col gap-4 rounded-lg border p-4 sm:flex-row sm:items-start"
               >
                 <Avatar>
                   <AvatarFallback>
                     {getInitials(request.sender.firstName, request.sender.lastName)}
                   </AvatarFallback>
                 </Avatar>
-                <div className="flex-1">
+                <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <p className="font-medium">
                       {request.sender.firstName} {request.sender.lastName}
@@ -85,7 +85,7 @@ export default function InvitationsPage() {
                     {format(parseISO(request.createdAt), "MMM d, yyyy 'at' h:mm a")}
                   </p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2 sm:ml-auto sm:flex-shrink-0 sm:justify-end">
                   <Button
                     size="sm"
                     variant="outline"

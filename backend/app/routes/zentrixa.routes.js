@@ -28,8 +28,6 @@ import User from '../models/User.js';
 
 const router = express.Router();
 
-router.use(authenticate);
-
 router.post('/', async (req, res) => {
   try {
     const { text } = req.body;
@@ -49,6 +47,9 @@ router.post('/', async (req, res) => {
   }
 });
 
+router.use(authenticate);
+
+router.post('/chat', handleZentrixaMessage);
 router.post('/message', handleZentrixaMessage);
 router.post('/confirm', handleZentrixaConfirm);
 router.get('/messages', getZentrixaMessages);

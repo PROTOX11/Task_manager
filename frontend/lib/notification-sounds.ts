@@ -3,6 +3,7 @@
 import type { Notification, User } from "./types";
 
 type SoundKind = "admin" | "personal" | "public";
+type ZentrixaCueKind = "listening" | "thinking" | "reply";
 
 const soundMap: Record<SoundKind, string> = {
   admin: "/notification_sound/admin.mp3",
@@ -13,6 +14,12 @@ const soundMap: Record<SoundKind, string> = {
 const zentrixaSound = "/sounds/zentrixa.mp3";
 const cooldowns = new Map<string, number>();
 const SOUND_COOLDOWN_MS = 4000;
+
+declare global {
+  interface Window {
+    webkitAudioContext?: typeof AudioContext;
+  }
+}
 
 const playSound = (kind: SoundKind, key: string = kind) => {
   if (typeof window === "undefined") return;
@@ -99,3 +106,44 @@ export const playZentrixaPing = () => {
     // Browsers can block autoplay until the user interacts with the app.
   });
 };
+
+const cueMap: Record<ZentrixaCueKind, { frequency: number; duration: number; gain: number }> = {
+  listening: { frequency: 196, duration: 0.18, gain: 0.08 },
+  thinking: { frequency: 146, duration: 0.12, gain: 0.07 },
+  reply: { frequency: 523, duration: 0.1, gain: 0.09 },
+};
+
+const playTone = (kind: ZentrixaCueKind) => {
+  if (typeof window === "undefined") return;
+
+  const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextCtor) return;
+
+  const config = cueMap[kind];
+  const audioContext = new AudioContextCtor();
+  const oscillator = audioContext.createOscillator();
+  const gainNode = audioContext.createGain();
+
+  oscillator.type = kind === "reply" ? "sine" : "triangle";
+  oscillator.frequency.value = config.frequency;
+
+  gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime);
+  gainNode.gain.exponentialRampToValueAtTime(config.gain, audioContext.currentTime + 0.01);
+  gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + config.duration);
+
+  oscillator.connect(gainNode);
+  gainNode.connect(audioContext.destination);
+
+  oscillator.start();
+  oscillator.stop(audioContext.currentTime + config.duration + 0.02);
+
+  oscillator.onended = () => {
+    gainNode.disconnect();
+    oscillator.disconnect();
+    void audioContext.close().catch(() => {});
+  };
+};
+
+export const playZentrixaListeningCue = () => playTone("listening");
+export const playZentrixaThinkingCue = () => playTone("thinking");
+export const playZentrixaReplyCue = () => playTone("reply");

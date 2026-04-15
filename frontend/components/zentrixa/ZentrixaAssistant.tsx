@@ -2,32 +2,47 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import { Bot, Loader2, Mic, MicOff, Send, Sparkles, X } from "lucide-react";
+import { Bot, Loader2, Mic, MicOff, Pencil, Save, Send, Square, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
+import { apiRequest } from "@/lib/api";
 
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { useVoiceRecognition } from "@/hooks/use-voice-recognition";
 import { useAuth } from "@/lib/auth-context";
 import { useData } from "@/lib/data-context";
 import {
+  playZentrixaListeningCue,
+  playZentrixaReplyCue,
+  playZentrixaThinkingCue,
+} from "@/lib/notification-sounds";
+import {
   type ZentrixaContext,
   confirmZentrixaCommand,
   getZentrixaMessages,
-  sendZentrixaMessage,
+  sendZentrixaChat,
 } from "@/lib/zentrixa-api";
+import { ZentrixaAiRing } from "./ZentrixaAiRing";
 import { ZentrixaTypingDots } from "./ZentrixaTyping";
 
 type Message = { role: "assistant" | "user"; content: string };
 type ProjectLookup = (id: string) => { name?: string } | undefined;
+type ZentrixaAiMode = "thinking" | "listening" | "replying" | null;
 type PendingConfirmation = {
   command: string;
   message: string;
   payload: Record<string, unknown>;
+};
+
+type DeveloperOption = {
+  id: string;
+  name: string;
+  email: string;
 };
 
 const QUICK_COMMANDS = [
@@ -68,14 +83,27 @@ export function ZentrixaAssistant({ context }: { context?: ZentrixaContext }) {
     { role: "assistant", content: "I’m Zentrixa. Tell me what you want to do." },
   ]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [aiMode, setAiMode] = useState<ZentrixaAiMode>(null);
   const [pendingCommand, setPendingCommand] = useState<Record<string, unknown> | null>(null);
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
+  const [confirmationEditMode, setConfirmationEditMode] = useState(false);
+  const [confirmationDraftTitle, setConfirmationDraftTitle] = useState("");
+  const [confirmationDraftDescription, setConfirmationDraftDescription] = useState("");
+  const [confirmationDescriptionEditMode, setConfirmationDescriptionEditMode] = useState(false);
+  const [developers, setDevelopers] = useState<DeveloperOption[]>([]);
+  const [developerSearch, setDeveloperSearch] = useState("");
+  const [selectedDeveloperId, setSelectedDeveloperId] = useState("");
+  const [loadingDevelopers, setLoadingDevelopers] = useState(false);
 
   const shellRef = useRef<HTMLDivElement | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const closeTimerRef = useRef<number | null>(null);
   const openFrameRef = useRef<number | null>(null);
+  const replyModeTimerRef = useRef<number | null>(null);
+  const pendingResponseRef = useRef(false);
+  const voiceSessionRef = useRef(false);
+  const speechUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   const routeProjectId = useMemo(() => {
     const match = pathname?.match(/^\/projects\/([^/?#]+)/);
@@ -86,6 +114,48 @@ export function ZentrixaAssistant({ context }: { context?: ZentrixaContext }) {
     () => buildProjectContext(context, routeProjectId, getProjectById),
     [context, getProjectById, routeProjectId]
   );
+
+  const clearReplyModeTimer = () => {
+    if (replyModeTimerRef.current !== null) {
+      window.clearTimeout(replyModeTimerRef.current);
+      replyModeTimerRef.current = null;
+    }
+  };
+
+  const showReplyModeBriefly = () => {
+    clearReplyModeTimer();
+    setAiMode("replying");
+    replyModeTimerRef.current = window.setTimeout(() => {
+      setAiMode((current) => (current === "replying" ? null : current));
+      replyModeTimerRef.current = null;
+    }, 900);
+  };
+
+  const stopSpeaking = () => {
+    if (typeof window === "undefined" || !window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    speechUtteranceRef.current = null;
+  };
+
+  const speakReply = (text: string) => {
+    if (typeof window === "undefined" || !window.speechSynthesis) return;
+
+    const cleaned = text.trim();
+    if (!cleaned) return;
+
+    stopSpeaking();
+    const utterance = new SpeechSynthesisUtterance(cleaned);
+    utterance.lang = "en-US";
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    speechUtteranceRef.current = utterance;
+    utterance.onend = () => {
+      if (speechUtteranceRef.current === utterance) {
+        speechUtteranceRef.current = null;
+      }
+    };
+    window.speechSynthesis.speak(utterance);
+  };
 
   useEffect(() => {
     if (open) {
@@ -164,18 +234,25 @@ export function ZentrixaAssistant({ context }: { context?: ZentrixaContext }) {
     setMessages((current) => [...current, { role: "assistant", content }]);
   };
 
-  const sendConfirmationDecision = async (confirmed: boolean, label: string) => {
+  const sendConfirmationDecision = async (
+    confirmed: boolean,
+    label: string,
+    payloadOverride?: Record<string, unknown>
+  ) => {
     if (!pendingConfirmation || !user) return;
+    const payload = payloadOverride || pendingConfirmation.payload;
 
     setLoading(true);
     setIsThinking(true);
+    setAiMode("thinking");
+    pendingResponseRef.current = true;
     setMessages((current) => [...current, { role: "user", content: label }]);
 
     try {
       const result = await confirmZentrixaCommand({
         confirmed,
         text: label,
-        payload: pendingConfirmation.payload,
+        payload,
         context: {
           ...context,
           ...activeProject,
@@ -183,12 +260,17 @@ export function ZentrixaAssistant({ context }: { context?: ZentrixaContext }) {
         },
       });
 
-      postAssistantMessage(result.reply || result.message || "I’m here with you.");
+      playZentrixaReplyCue();
+      await new Promise((resolve) => window.setTimeout(resolve, 100));
+      showReplyModeBriefly();
+      const replyText = result.reply || result.message || "I’m here with you.";
+      postAssistantMessage(replyText);
+      if (voiceSessionRef.current) {
+        speakReply(replyText);
+        voiceSessionRef.current = false;
+      }
       setPendingConfirmation(null);
       setPendingCommand(null);
-      if (result.executed) {
-        toast.success(result.reply || "Done.");
-      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "I couldn’t complete that.";
       postAssistantMessage(message);
@@ -196,8 +278,133 @@ export function ZentrixaAssistant({ context }: { context?: ZentrixaContext }) {
     } finally {
       setIsThinking(false);
       setLoading(false);
+      pendingResponseRef.current = false;
       scrollToBottom();
     }
+  };
+
+  useEffect(() => {
+    if (!pendingConfirmation) {
+      setConfirmationEditMode(false);
+      setConfirmationDraftTitle("");
+      setConfirmationDraftDescription("");
+      setConfirmationDescriptionEditMode(false);
+      setDevelopers([]);
+      setDeveloperSearch("");
+      setSelectedDeveloperId("");
+      return;
+    }
+
+    const initialTitle = typeof pendingConfirmation.payload.title === "string" ? pendingConfirmation.payload.title : "";
+    const initialDescription = typeof pendingConfirmation.payload.description === "string" ? pendingConfirmation.payload.description : "";
+    setConfirmationDraftTitle(initialTitle);
+    setConfirmationDraftDescription(initialDescription);
+    setConfirmationEditMode(false);
+    setConfirmationDescriptionEditMode(false);
+  }, [pendingConfirmation]);
+
+  useEffect(() => {
+    if (!pendingConfirmation || String(pendingConfirmation.command || "").toUpperCase() !== "CREATE_TASK") return;
+
+    let cancelled = false;
+    const loadDevelopers = async () => {
+      try {
+        setLoadingDevelopers(true);
+        const response = await apiRequest<{ developers: Array<any> }>("/auth/developers");
+        if (cancelled) return;
+        setDevelopers(
+          (response.developers || []).map((developer) => ({
+            id: (developer._id || developer.id).toString(),
+            name: developer.name,
+            email: developer.email,
+          }))
+        );
+      } catch (error) {
+        if (!cancelled) {
+          toast.error(error instanceof Error ? error.message : "Unable to load developers");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingDevelopers(false);
+        }
+      }
+    };
+
+    void loadDevelopers();
+    return () => {
+      cancelled = true;
+    };
+  }, [pendingConfirmation]);
+
+  const filteredDevelopers = useMemo(() => {
+    const term = developerSearch.trim().toLowerCase();
+    if (!term) return developers;
+    return developers.filter((developer) => {
+      const haystack = `${developer.name} ${developer.email}`.toLowerCase();
+      return haystack.includes(term);
+    });
+  }, [developers, developerSearch]);
+
+  const applyConfirmationDraft = () => {
+    if (!pendingConfirmation) return;
+    const cleanedTitle = confirmationDraftTitle.trim();
+    if (!cleanedTitle) {
+      toast.error("Task name cannot be empty.");
+      return;
+    }
+
+    setPendingConfirmation((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        message: current.command === "CREATE_TASK" && current.payload.projectName
+          ? `Create task ${cleanedTitle} in ${String(current.payload.projectName)} and assign it to ${String(current.payload.userName || "someone")}?`
+          : current.message,
+        payload: {
+          ...current.payload,
+          title: cleanedTitle,
+        },
+      };
+    });
+    setConfirmationEditMode(false);
+    toast.success("Task name updated.");
+  };
+
+  const applyConfirmationDescription = () => {
+    if (!pendingConfirmation) return;
+    const cleanedDescription = confirmationDraftDescription.trim();
+
+    setPendingConfirmation((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        payload: {
+          ...current.payload,
+          description: cleanedDescription,
+        },
+      };
+    });
+    setConfirmationDescriptionEditMode(false);
+    toast.success(cleanedDescription ? "Description saved." : "Description cleared.");
+  };
+
+  const buildCreateTaskPayload = () => {
+    if (!pendingConfirmation) return null;
+
+    const selectedDeveloper = developers.find((developer) => developer.id === selectedDeveloperId);
+    return {
+      ...pendingConfirmation.payload,
+      description: confirmationDraftDescription.trim(),
+      ...(selectedDeveloper
+        ? {
+            userId: selectedDeveloper.id,
+            userName: selectedDeveloper.name,
+          }
+        : {
+            userId: null,
+            userName: null,
+          }),
+    };
   };
 
   const handleSend = async (rawText: string) => {
@@ -219,11 +426,13 @@ export function ZentrixaAssistant({ context }: { context?: ZentrixaContext }) {
     setInput("");
     setLoading(true);
     setIsThinking(true);
+    setAiMode("thinking");
+    pendingResponseRef.current = true;
     setMessages((current) => [...current, { role: "user", content: cleaned }]);
 
     try {
-      const result = await sendZentrixaMessage({
-        text: cleaned,
+      const result = await sendZentrixaChat({
+        message: cleaned,
         context: {
           ...context,
           ...activeProject,
@@ -232,7 +441,14 @@ export function ZentrixaAssistant({ context }: { context?: ZentrixaContext }) {
       });
 
       const reply = result.reply || result.message || "I’m here with you.";
+      playZentrixaReplyCue();
+      await new Promise((resolve) => window.setTimeout(resolve, 100));
+      showReplyModeBriefly();
       postAssistantMessage(reply);
+      if (voiceSessionRef.current) {
+        speakReply(reply);
+        voiceSessionRef.current = false;
+      }
 
       if (result.type === "CONFIRM" || result.requiresConfirmation) {
         setPendingConfirmation(
@@ -257,9 +473,6 @@ export function ZentrixaAssistant({ context }: { context?: ZentrixaContext }) {
         setPendingConfirmation(null);
       }
 
-      if (result.mode === "command" && result.intent && !result.requiresClarification && result.type !== "CONFIRM") {
-        toast.success(reply);
-      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "I couldn’t understand that.";
       setMessages((current) => [...current, { role: "assistant", content: message }]);
@@ -267,11 +480,28 @@ export function ZentrixaAssistant({ context }: { context?: ZentrixaContext }) {
     } finally {
       setIsThinking(false);
       setLoading(false);
+      pendingResponseRef.current = false;
       scrollToBottom();
     }
   };
 
-  const { supported, isListening, error, startListening, stopListening } = useVoiceRecognition({
+  const { supported, isListening, isMuted, error, micScale, startListening, stopListening, toggleMute } = useVoiceRecognition({
+    onStart: () => {
+      setAiMode("listening");
+      playZentrixaListeningCue();
+    },
+    onEnd: () => {
+      playZentrixaThinkingCue();
+      setAiMode("thinking");
+    },
+    onError: (message) => {
+      pendingResponseRef.current = false;
+      voiceSessionRef.current = false;
+      setAiMode(null);
+      if (process.env.NODE_ENV !== "production") {
+        console.debug("[Zentrixa voice]", message);
+      }
+    },
     onFinalResult: async (text) => {
       setInput(text);
       await handleSend(text);
@@ -283,11 +513,27 @@ export function ZentrixaAssistant({ context }: { context?: ZentrixaContext }) {
   }, [error]);
 
   useEffect(() => {
+    if (!open && aiMode === "listening") {
+      stopListening();
+      setAiMode(null);
+    }
+  }, [aiMode, open, stopListening]);
+
+  useEffect(() => {
+    return () => {
+      clearReplyModeTimer();
+      pendingResponseRef.current = false;
+      voiceSessionRef.current = false;
+      stopSpeaking();
+    };
+  }, []);
+
+  useEffect(() => {
     if (!open) return;
-    const id = window.requestAnimationFrame(() => {
-      endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-    });
-    return () => window.cancelAnimationFrame(id);
+    const timer = window.setTimeout(() => {
+      endRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [open, historyLoaded]);
 
   useEffect(() => {
@@ -310,15 +556,31 @@ export function ZentrixaAssistant({ context }: { context?: ZentrixaContext }) {
       return;
     }
 
+    voiceSessionRef.current = true;
+    stopSpeaking();
     setOpen(true);
     window.requestAnimationFrame(() => {
       try {
         startListening();
       } catch {
+        voiceSessionRef.current = false;
+        setAiMode(null);
         toast.error("Voice input could not start. Please try again.");
       }
     });
   };
+
+  const stopVoice = () => {
+    voiceSessionRef.current = false;
+    pendingResponseRef.current = false;
+    clearReplyModeTimer();
+    stopSpeaking();
+    stopListening();
+    setAiMode(null);
+  };
+
+  const showAiRingInChat = Boolean(aiMode || isThinking);
+  const chatRingMode = aiMode || (isThinking ? "thinking" : null);
 
   return (
     <div ref={shellRef} className="fixed bottom-4 right-4 z-50 sm:bottom-6 sm:right-6">
@@ -330,9 +592,10 @@ export function ZentrixaAssistant({ context }: { context?: ZentrixaContext }) {
           <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-4">
             <div className="flex shrink-0 items-center justify-between border-b border-border/70 pb-3">
               <div className="flex min-w-0 items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
-                  <Bot className="h-5 w-5" />
-                </div>
+                <ZentrixaAiRing
+                  mode={null}
+                  size={64}
+                />
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 text-sm font-semibold">
                     Zentrixa
@@ -375,86 +638,267 @@ export function ZentrixaAssistant({ context }: { context?: ZentrixaContext }) {
             </div>
 
             <div className="mt-3 min-h-0 flex-1 overflow-hidden">
-              <ScrollArea className="h-full pr-3">
-                <div className="space-y-3 pb-2">
-                {messages.map((message, index) => (
-                  <div
-                    key={`${message.role}-${index}`}
-                    className={cn("flex items-end gap-2", message.role === "user" ? "justify-end" : "justify-start")}
-                  >
-                    {message.role === "assistant" && (
+              {showAiRingInChat ? (
+                <div className="flex h-full items-center justify-center rounded-3xl border border-border/60 bg-[radial-gradient(circle_at_center,rgba(200,162,122,0.12),transparent_55%),linear-gradient(180deg,rgba(255,255,255,0.08),rgba(0,0,0,0.02))]">
+                  <ZentrixaAiRing
+                    mode={chatRingMode}
+                    micScale={micScale}
+                    size={176}
+                  />
+                </div>
+              ) : (
+                <ScrollArea className="h-full pr-3">
+                  <div className="space-y-3 pb-2">
+                  {messages.map((message, index) => (
+                    <div
+                      key={`${message.role}-${index}`}
+                      className={cn("flex items-end gap-2", message.role === "user" ? "justify-end" : "justify-start")}
+                    >
+                      {message.role === "assistant" && (
+                        <Avatar className="h-7 w-7 shrink-0">
+                          <AvatarFallback className="text-[10px]">ZX</AvatarFallback>
+                        </Avatar>
+                      )}
+                      <div
+                        className={cn(
+                          "max-w-[82%] rounded-2xl px-3 py-2 text-sm leading-relaxed",
+                          message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
+                        )}
+                      >
+                        {message.content}
+                      </div>
+                      {message.role === "user" && (
+                        <Avatar className="h-7 w-7 shrink-0">
+                          <AvatarFallback className="text-[10px]">
+                            {user?.firstName?.charAt(0) || "Y"}
+                            {user?.lastName?.charAt(0) || "U"}
+                          </AvatarFallback>
+                        </Avatar>
+                      )}
+                    </div>
+                  ))}
+
+                  {isThinking && (
+                    <div className="flex items-end gap-2">
                       <Avatar className="h-7 w-7 shrink-0">
                         <AvatarFallback className="text-[10px]">ZX</AvatarFallback>
                       </Avatar>
-                    )}
-                    <div
-                      className={cn(
-                        "max-w-[82%] rounded-2xl px-3 py-2 text-sm leading-relaxed",
-                        message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
+                      <div className="max-w-[82%] rounded-2xl bg-muted text-foreground">
+                        <ZentrixaTypingDots />
+                      </div>
+                    </div>
+                  )}
+
+                  {pendingConfirmation && (
+                    <div className="w-full max-w-[310px] rounded-2xl border border-primary/25 bg-primary/8 p-2.5 text-xs shadow-sm">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground/90">
+                          Confirm
+                        </div>
+                        {String(pendingConfirmation.command || "").toUpperCase() === "CREATE_TASK" && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 rounded-full px-2 text-[10px]"
+                            onClick={() => setConfirmationEditMode((value) => !value)}
+                          >
+                            <Pencil className="mr-1 h-3 w-3" />
+                            Edit
+                          </Button>
+                        )}
+                      </div>
+                      {String(pendingConfirmation.command || "").toUpperCase() === "CREATE_TASK" && confirmationEditMode ? (
+                        <div className="mt-2 flex items-center gap-2">
+                          <Input
+                            value={confirmationDraftTitle}
+                            onChange={(event) => setConfirmationDraftTitle(event.target.value)}
+                            className="h-9 rounded-2xl text-xs"
+                            placeholder="Task name"
+                          />
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="h-9 rounded-full px-3 text-xs"
+                            onClick={applyConfirmationDraft}
+                          >
+                            <Save className="mr-1 h-3 w-3" />
+                            Save
+                          </Button>
+                        </div>
+                      ) : null}
+                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{pendingConfirmation.message}</p>
+                      {String(pendingConfirmation.command || "").toUpperCase() === "CREATE_TASK" && (
+                        <div className="mt-2 space-y-2 rounded-xl border border-border/60 bg-background/70 p-2">
+                          <div className="rounded-lg border border-border/50 bg-background/80 p-1.5">
+                            <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                              Have a description?
+                            </div>
+                            {confirmationDescriptionEditMode || confirmationDraftDescription ? (
+                              <div className="space-y-1.5">
+                                <Textarea
+                                  value={confirmationDraftDescription}
+                                  onChange={(event) => setConfirmationDraftDescription(event.target.value)}
+                                  placeholder="Describe the task..."
+                                  className="min-h-20 rounded-xl text-xs"
+                                />
+                                <div className="flex items-center gap-2">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    className="h-7 rounded-full px-3 text-[10px]"
+                                    onClick={applyConfirmationDescription}
+                                  >
+                                    <Save className="mr-1 h-3 w-3" />
+                                    Save
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="secondary"
+                                    className="h-7 rounded-full px-3 text-[10px]"
+                                    onClick={() => {
+                                      setConfirmationDraftDescription("");
+                                      setConfirmationDescriptionEditMode(false);
+                                    }}
+                                  >
+                                    No description
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  className="h-7 rounded-full px-3 text-[10px]"
+                                  onClick={() => setConfirmationDescriptionEditMode(true)}
+                                >
+                                  Yes
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="secondary"
+                                  className="h-7 rounded-full px-3 text-[10px]"
+                                  onClick={() => {
+                                    setConfirmationDraftDescription("");
+                                    setConfirmationDescriptionEditMode(false);
+                                    toast.success("No description will be added. You can update it later.");
+                                  }}
+                                >
+                                  No
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                          <div>
+                            <div className="mb-1.5 flex items-center justify-between gap-2">
+                              <div className="text-[9px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                                Assign someone?
+                              </div>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 rounded-full px-2 text-[10px]"
+                                onClick={() => {
+                                  setSelectedDeveloperId("");
+                                  setDeveloperSearch("");
+                                }}
+                              >
+                                Clear
+                              </Button>
+                            </div>
+                            <Input
+                              value={developerSearch}
+                              onChange={(event) => setDeveloperSearch(event.target.value)}
+                              placeholder="Search developers"
+                              className="h-7 rounded-xl text-[10px]"
+                            />
+                            <div className="mt-1.5 max-h-24 overflow-auto rounded-xl border border-border/40 bg-background">
+                              <button
+                                type="button"
+                                className={cn(
+                                  "flex w-full items-center justify-between px-2 py-1 text-left text-[10px] transition-colors",
+                                  !selectedDeveloperId && "bg-primary/10 text-foreground"
+                                )}
+                                onClick={() => setSelectedDeveloperId("")}
+                              >
+                                <span>No assignee</span>
+                                <span className="text-muted-foreground">leave empty</span>
+                              </button>
+                              {loadingDevelopers ? (
+                                <div className="px-2 py-1.5 text-[10px] text-muted-foreground">Loading developers...</div>
+                              ) : filteredDevelopers.length > 0 ? (
+                                filteredDevelopers.map((developer) => (
+                                  <button
+                                    key={developer.id}
+                                    type="button"
+                                    className={cn(
+                                      "flex w-full items-center justify-between px-2 py-1 text-left text-[10px] transition-colors hover:bg-primary/10",
+                                      selectedDeveloperId === developer.id && "bg-primary/15 text-foreground"
+                                    )}
+                                    onClick={() => setSelectedDeveloperId(developer.id)}
+                                  >
+                                    <span className="truncate">{developer.name}</span>
+                                    <span className="ml-2 truncate text-[9px] text-muted-foreground">{developer.email}</span>
+                                  </button>
+                                ))
+                              ) : (
+                                <div className="px-2 py-1.5 text-[10px] text-muted-foreground">No developers found.</div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
                       )}
-                    >
-                      {message.content}
+                      <div className="mt-2 flex items-center gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="h-7 rounded-full px-3 text-[10px]"
+                          onClick={() => {
+                            const payload = buildCreateTaskPayload();
+                            if (!payload) return;
+                            void sendConfirmationDecision(true, "yes", payload);
+                          }}
+                        >
+                          Yes
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          className="h-7 rounded-full px-3 text-[10px]"
+                          onClick={() => void sendConfirmationDecision(false, "cancel")}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                      {String(pendingConfirmation.command || "").toUpperCase() === "CREATE_TASK" && (
+                        <div className="mt-2 rounded-xl bg-background/60 px-2.5 py-2 text-[10px] leading-relaxed text-muted-foreground">
+                          <div>Task: {confirmationDraftTitle || String(pendingConfirmation.payload.title || "")}</div>
+                          <div>Project: {String(pendingConfirmation.payload.projectName || "")}</div>
+                          <div>Description: {confirmationDraftDescription.trim() || "none"}</div>
+                          <div>Assign to: {selectedDeveloperId ? (developers.find((developer) => developer.id === selectedDeveloperId)?.name || "selected") : String(pendingConfirmation.payload.userName || "not set")}</div>
+                        </div>
+                      )}
                     </div>
-                    {message.role === "user" && (
-                      <Avatar className="h-7 w-7 shrink-0">
-                        <AvatarFallback className="text-[10px]">
-                          {user?.firstName?.charAt(0) || "Y"}
-                          {user?.lastName?.charAt(0) || "U"}
-                        </AvatarFallback>
-                      </Avatar>
-                    )}
-                  </div>
-                ))}
+                  )}
 
-                {isThinking && (
-                  <div className="flex items-end gap-2">
-                    <Avatar className="h-7 w-7 shrink-0">
-                      <AvatarFallback className="text-[10px]">ZX</AvatarFallback>
-                    </Avatar>
-                    <div className="max-w-[82%] rounded-2xl bg-muted text-foreground">
-                      <ZentrixaTypingDots />
+                  {pendingCommand && !pendingConfirmation && (
+                    <div className="rounded-2xl border border-border/70 bg-muted/45 p-3 text-sm">
+                      <div className="font-semibold text-foreground">Need one more detail</div>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Zentrixa is waiting on the missing part of your last command. Just reply naturally and I’ll continue.
+                      </p>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {pendingConfirmation && (
-                  <div className="rounded-2xl border border-primary/25 bg-primary/8 p-3 text-sm shadow-sm">
-                    <div className="font-semibold text-foreground">Confirm action</div>
-                    <p className="mt-1 text-sm text-muted-foreground">{pendingConfirmation.message}</p>
-                    <div className="mt-3 flex items-center gap-2">
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="rounded-full"
-                        onClick={() => void sendConfirmationDecision(true, "yes")}
-                      >
-                        Yes
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        className="rounded-full"
-                        onClick={() => void sendConfirmationDecision(false, "cancel")}
-                      >
-                        Cancel
-                      </Button>
-                    </div>
+                  <div ref={endRef} />
                   </div>
-                )}
-
-                {pendingCommand && !pendingConfirmation && (
-                  <div className="rounded-2xl border border-border/70 bg-muted/45 p-3 text-sm">
-                    <div className="font-semibold text-foreground">Need one more detail</div>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Zentrixa is waiting on the missing part of your last command. Just reply naturally and I’ll continue.
-                    </p>
-                  </div>
-                )}
-
-                <div ref={endRef} />
-                </div>
-              </ScrollArea>
+                </ScrollArea>
+              )}
             </div>
 
             <div className="mt-3 shrink-0 space-y-3">
@@ -476,19 +920,41 @@ export function ZentrixaAssistant({ context }: { context?: ZentrixaContext }) {
                   type="button"
                   size="icon"
                   variant="secondary"
-                  className={cn("h-11 w-11 rounded-2xl transition-transform", isListening && "zentrixa-listening")}
-                  onClick={startVoice}
-                  aria-label="Toggle voice input"
+                  className="h-11 w-11 rounded-2xl"
+                  onClick={() => {
+                    if (isListening || aiMode === "listening") {
+                      toggleMute();
+                    } else {
+                      startVoice();
+                    }
+                  }}
+                  aria-label={isListening ? (isMuted ? "Unmute microphone" : "Mute microphone") : "Start voice input"}
                 >
-                  {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                  {isListening ? (
+                    isMuted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />
+                  ) : (
+                    <Mic className="h-4 w-4" />
+                  )}
                 </Button>
                 <Button
                   type="button"
                   className="h-11 rounded-2xl px-4"
-                  onClick={() => void handleSend(input)}
-                  disabled={loading}
+                  onClick={() => {
+                    if (isListening) {
+                      stopVoice();
+                      return;
+                    }
+                    void handleSend(input);
+                  }}
+                  disabled={loading && !isListening}
                 >
-                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  {isListening ? (
+                    <Square className="h-4 w-4" />
+                  ) : loading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
                 </Button>
               </div>
 

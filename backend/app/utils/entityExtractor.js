@@ -51,9 +51,9 @@ export function extractEntities(text = "", intent = "unknown") {
   const entities = {};
 
   const taskPatterns = [
-    /(?:delete|remove|cancel|trash|erase|assign|move|update|create)\s+(?:the\s+)?task\s+(.+?)(?:\s+from\b|\s+to\b|\s+in\b|\s+of\b|\s+on\b|$)/i,
+    /(?:delete|remove|cancel|trash|erase|assign|move|update|create|rename|retitle)\s+(?:the\s+)?task\s+(.+?)(?:\s+from\b|\s+to\b|\s+in\b|\s+of\b|\s+on\b|$)/i,
     /(?:delete|remove|cancel|trash|erase)\s+(.+?)(?:\s+from\b|\s+in\b|\s+of\b|\s+on\b|$)/i,
-    /(?:assign|move|update|create)\s+(.+?)(?:\s+to\b|\s+from\b|\s+in\b|\s+of\b|\s+on\b|$)/i,
+    /(?:assign|move|update|create|rename|retitle)\s+(.+?)(?:\s+to\b|\s+from\b|\s+in\b|\s+of\b|\s+on\b|$)/i,
   ];
 
   const projectPatterns = [
@@ -74,7 +74,7 @@ export function extractEntities(text = "", intent = "unknown") {
     /\bstatus\s+is\s+([a-zA-Z0-9_-]+(?:\s+[a-zA-Z0-9_-]+)?)$/i,
   ];
 
-  if (["delete_task", "assign_task", "move_task", "update_deadline", "create_task"].includes(intent)) {
+  if (["delete_task", "assign_task", "move_task", "update_deadline", "create_task", "update_task"].includes(intent)) {
     const taskName = extractWithPatterns(normalized, taskPatterns);
     if (taskName) {
       entities.task_name = stripLeadingTokens(takeUntil(taskName, ["from", "to", "in", "of", "on"]));
@@ -85,6 +85,27 @@ export function extractEntities(text = "", intent = "unknown") {
     const projectName = extractWithPatterns(normalized, projectPatterns);
     if (projectName) {
       entities.project_name = stripLeadingTokens(takeUntil(projectName, ["to", "by", "for", "task"]));
+    }
+  }
+
+  if (intent === "create_task") {
+    const projectMatch = normalized.match(/\bin\s+(?:the\s+)?(.+?)(?:\s+and\b|\s+assign\b|\s+to\b|\s+for\b|$)/i);
+    if (projectMatch?.[1]) {
+      const projectValue = stripLeadingTokens(takeUntil(projectMatch[1], ["and", "assign", "to", "for"]));
+      entities.project_name = projectValue.replace(/^(project|workspace|board)\s+/i, "").trim();
+    }
+
+    const emailMatch = normalized.match(/\b([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b/);
+    if (emailMatch?.[1]) {
+      entities.user_name = emailMatch[1];
+    }
+
+    const assigneeMatch = normalized.match(/\bassign(?:ed)?\s+(?:to\s+)?(.+?)(?:\s+and\b|\s+in\b|\s+for\b|$)/i);
+    if (assigneeMatch?.[1]) {
+      const cleaned = stripLeadingTokens(clean(assigneeMatch[1]));
+      if (cleaned) {
+        entities.user_name = cleaned;
+      }
     }
   }
 
@@ -177,6 +198,22 @@ export function extractEntities(text = "", intent = "unknown") {
     const match = normalized.match(/(?:create|add|make)\s+(?:a\s+)?task\s+(.+?)(?:\s+for\b|\s+in\b|\s+to\b|$)/i);
     if (match?.[1]) {
       entities.task_name = stripLeadingTokens(takeUntil(match[1], ["for", "in", "to"]));
+    }
+  }
+
+  if (intent === "update_task") {
+    const renamePatterns = [
+      /(?:rename|retitle|change\s+name|name\s+it)\s+(?:the\s+)?task\s+(.+?)(?:\s+to\b|\s+as\b|\s+into\b|$)/i,
+      /\bor\s+([a-zA-Z0-9._-]+(?:\s+[a-zA-Z0-9._-]+)?)\s+(?:rkh|rk|rakh)\s*do\b/i,
+      /(?:to|as|into)\s+([a-zA-Z0-9._-]+(?:\s+[a-zA-Z0-9._-]+)?)$/i,
+    ];
+
+    for (const pattern of renamePatterns) {
+      const match = normalized.match(pattern);
+      if (match?.[1]) {
+        entities.new_name = stripLeadingTokens(clean(match[1]));
+        break;
+      }
     }
   }
 

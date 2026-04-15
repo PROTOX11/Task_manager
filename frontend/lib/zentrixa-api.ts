@@ -172,10 +172,27 @@ export async function sendZentrixaMessage(payload: {
   projectId?: string;
   entities?: Record<string, string | undefined>;
 }): Promise<ZentrixaMessageResult> {
-  return apiRequest<ZentrixaMessageResult>("/zentrixa/message", {
+  return sendZentrixaChat({
+    message: payload.text,
+    context: payload.context,
+    taskId: payload.taskId,
+    projectId: payload.projectId,
+    entities: payload.entities,
+  });
+}
+
+export async function sendZentrixaChat(payload: {
+  message: string;
+  context?: ZentrixaContext;
+  taskId?: string;
+  projectId?: string;
+  entities?: Record<string, string | undefined>;
+}): Promise<ZentrixaMessageResult> {
+  return apiRequest<ZentrixaMessageResult>("/zentrixa/chat", {
     method: "POST",
     body: JSON.stringify({
-      text: payload.text,
+      message: payload.message,
+      text: payload.message,
       context: payload.context,
       taskId: payload.taskId,
       projectId: payload.projectId,

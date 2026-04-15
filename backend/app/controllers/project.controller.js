@@ -50,6 +50,19 @@ export const getAllProjects = async (req, res) => {
 export const createProject = async (req, res) => {
   try {
     const { name, description, panels, githubRepository } = req.body;
+    const normalizedName = (name || '').trim().toLowerCase();
+    if (!normalizedName) {
+      return res.status(400).json({ message: 'Project name is required' });
+    }
+
+    const existingProject = await Project.findOne({
+      name: new RegExp(`^${normalizedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'),
+      createdBy: req.userId,
+    });
+    if (existingProject) {
+      return res.status(409).json({ message: `Project "${existingProject.name}" already exists.` });
+    }
+
     const defaultPanels = [
       { name: 'To Do', description: 'Tasks waiting to be started', color: '#64748b' },
       { name: 'In Progress', description: 'Tasks currently being worked on', color: '#2563eb' },
@@ -146,6 +159,17 @@ export const updateProject = async (req, res) => {
     // Check if user is admin who created the project
     if (project.createdBy.toString() !== req.userId.toString() && req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Not authorized to update this project' });
+    }
+
+    if (name) {
+      const duplicate = await Project.findOne({
+        _id: { $ne: id },
+        createdBy: project.createdBy,
+        name: new RegExp(`^${name.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'),
+      });
+      if (duplicate) {
+        return res.status(409).json({ message: `Project "${duplicate.name}" already exists.` });
+      }
     }
 
     if (name) project.name = name;

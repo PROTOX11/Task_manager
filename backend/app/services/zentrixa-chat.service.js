@@ -24,6 +24,8 @@ const COMMAND_HINTS = [
   { intent: 'delete_project', pattern: /\b(delete|remove|archive)\s+project\b/i },
   { intent: 'rename_project', pattern: /\brename\s+project\b/i },
   { intent: 'create_task', pattern: /\b(create|make|add)\s+task\b/i },
+  { intent: 'delete_task', pattern: /\b(delete|remove|cancel|trash|erase)\s+(?:the\s+)?task\b/i },
+  { intent: 'update_task', pattern: /\b(rename|retitle|change\s+name)\b/i },
   { intent: 'assign_task', pattern: /\bassign\b/i },
   { intent: 'move_task', pattern: /\b(move|change)\b/i },
   { intent: 'update_task', pattern: /\b(update|edit|change)\s+task\b/i },
@@ -37,7 +39,9 @@ const COMMAND_DEFINITIONS = [
   { intent: 'create_project', label: 'Create a project' },
   { intent: 'delete_project', label: 'Delete a project' },
   { intent: 'rename_project', label: 'Rename a project' },
+  { intent: 'analyze_project', label: 'Show project summary' },
   { intent: 'create_task', label: 'Create a task' },
+  { intent: 'delete_task', label: 'Delete a task' },
   { intent: 'assign_task', label: 'Assign a task' },
   { intent: 'move_task', label: 'Change task status' },
   { intent: 'update_task', label: 'Update a task' },
@@ -52,7 +56,9 @@ const CONFIRMATION_INTENTS = new Set([
   'create_project',
   'delete_project',
   'rename_project',
+  'analyze_project',
   'create_task',
+  'delete_task',
   'assign_task',
   'move_task',
   'update_task',
@@ -156,6 +162,37 @@ const formatTaskTitle = (task) => task?.title || 'task';
 
 const isObjectId = (value) => mongoose.Types.ObjectId.isValid(value);
 
+const buildProjectSummary = async (projectId) => {
+  if (!projectId || !isObjectId(projectId)) return null;
+  const project = await Project.findById(projectId)
+    .populate('developers', 'name email role')
+    .populate('createdBy', 'name email role')
+    .populate('panels');
+
+  if (!project) return null;
+
+  const tasks = await Task.find({ projectId })
+    .populate('assignedDeveloper', 'name email role')
+    .lean();
+
+  const total = tasks.length;
+  const completed = tasks.filter((task) => task.approvedByAdmin || task.status === 'completed').length;
+  const inProgress = tasks.filter((task) => task.status === 'in-progress').length;
+  const pending = tasks.filter((task) => task.status === 'pending' || !task.status).length;
+  const review = tasks.filter((task) => task.status === 'review').length;
+  const progress = typeof project.progress === 'number' ? project.progress : (total > 0 ? Math.round((completed / total) * 100) : 0);
+
+  return {
+    project,
+    total,
+    completed,
+    inProgress,
+    pending,
+    review,
+    progress,
+  };
+};
+
 const saveZentrixaMessage = async ({ userId, role, content, mode = 'chat', intent = 'unknown', projectId = null, taskId = null, metadata = {} }) => {
   if (!userId || !content) return null;
   try {
@@ -212,7 +249,7 @@ const buildCommandClassifierMessages = (user, text, context = {}) => ([
       'If the user is replying to a previous clarification, use the pending command context to infer the next step.',
       `Allowed commands: ${COMMAND_DEFINITIONS.map((item) => `${item.intent}:${item.label}`).join(' | ')}`,
       'Required JSON shape:',
-      '{"mode":"chat|command","intent":"create_task|assign_task|move_task|update_task|comment_task|show_delayed|create_project|delete_project|rename_project|add_member|remove_member|update_deadline|unknown","confidence":0,"reply":"human response","missing":[],"entities":{"project_name":"","task_name":"","user_name":"","status":"","deadline":"","new_name":"","description":"","comment":""},"pendingCommand":null}',
+      '{"mode":"chat|command","intent":"create_task|delete_task|assign_task|move_task|update_task|comment_task|show_delayed|create_project|delete_project|rename_project|analyze_project|add_member|remove_member|update_deadline|unknown","confidence":0,"reply":"human response","missing":[],"entities":{"project_name":"","task_name":"","user_name":"","status":"","deadline":"","new_name":"","description":"","comment":""},"pendingCommand":null}',
     ].join(' '),
   },
   {
@@ -551,12 +588,25 @@ const executeConfirmedCommand = async ({ user, text, context = {}, payload = {} 
   }
 
   if (command === 'create_project') {
+    const targetName = payload.name || payload.projectName || payload.project_name || context.name || context.projectName || '';
+    const existingProject = targetName ? await Project.findOne({
+      createdBy: user._id,
+      name: new RegExp(`^${escapeRegExp(normalize(targetName))}$`, 'i'),
+    }) : null;
+    if (existingProject) {
+      return {
+        executed: false,
+        mode: 'command',
+        reply: `Project ${existingProject.name} already exists.`,
+      };
+    }
+
     const result = await runController(createProject, {
       ...context,
       user,
       userId: user?._id,
       body: {
-        name: payload.name || payload.projectName || payload.project_name || context.name || context.projectName,
+        name: targetName,
         description: payload.description || context.description || '',
         githubRepository: payload.githubRepository || context.githubRepository || '',
       },
@@ -570,9 +620,10 @@ const executeConfirmedCommand = async ({ user, text, context = {}, payload = {} 
   }
 
   if (command === 'delete_project') {
+    const projectId = payload.projectId || payload.project_id || null;
     const result = await runController(deleteProject, {
       ...context,
-      params: { id: (payload.projectId || payload.project_id || context.projectId || '').toString() },
+      params: { id: projectId.toString() },
       user,
       userId: user?._id,
       body: {},
@@ -585,9 +636,10 @@ const executeConfirmedCommand = async ({ user, text, context = {}, payload = {} 
   }
 
   if (command === 'rename_project') {
+    const projectId = payload.projectId || payload.project_id || null;
     const result = await runController(updateProject, {
       ...context,
-      params: { id: (payload.projectId || payload.project_id || context.projectId || '').toString() },
+      params: { id: projectId.toString() },
       user,
       userId: user?._id,
       body: {
@@ -603,6 +655,15 @@ const executeConfirmedCommand = async ({ user, text, context = {}, payload = {} 
   }
 
   if (command === 'create_task') {
+    const assigneeId = payload.userId || payload.user_id || context.developerId || null;
+    const projectName = payload.projectName || context.projectName || '';
+    const projectId = payload.projectId || payload.project_id || context.projectId || null;
+    let panelId = payload.panelId || payload.panel_id || context.panelId || null;
+    if (!panelId && projectId && isObjectId(projectId)) {
+      const panels = await Panel.find({ projectId }).sort({ order: 1 });
+      const todoPanel = panels.find((panel) => /(^|\b)(to\s*do|todo|pending|backlog)(\b|$)/i.test(panel.name)) || panels[0];
+      panelId = todoPanel?._id || null;
+    }
     const result = await runController(createTask, {
       ...context,
       user,
@@ -610,19 +671,65 @@ const executeConfirmedCommand = async ({ user, text, context = {}, payload = {} 
       body: {
         title: payload.title || payload.taskName || payload.task_name || context.title,
         description: payload.description || context.description || '',
-        projectId: payload.projectId || payload.project_id || context.projectId,
-        panelId: payload.panelId || payload.panel_id || context.panelId,
-        assignedDeveloper: payload.userId || payload.user_id || payload.assignedDeveloper || context.developerId,
+        projectId,
+        panelId,
+        assignedDeveloper: assigneeId || payload.assignedDeveloper || null,
         priority: payload.priority || context.priority || 'medium',
         deadline: payload.deadline || context.deadline,
       },
     });
     const task = result.body?.task || null;
+    const assignee = payload.userName || (assigneeId ? await User.findById(assigneeId).select('name email') : null);
     return {
       executed: result.statusCode < 400,
       mode: 'command',
-      reply: task ? `Task ${task.title} created.` : result.body?.message || 'Task created.',
+      reply: task
+        ? assignee
+          ? `Task ${task.title} created in ${projectName || 'the project'} and assigned to ${formatName(assignee)}.`
+          : `Task ${task.title} created in ${projectName || 'the project'}.`
+        : result.body?.message || 'Task created.',
     };
+  }
+
+  if (command === 'delete_task') {
+    const taskTitleHint = payload.taskName || payload.task_name || context.taskName || text;
+    const searchProjectId = payload.projectId || payload.project_id || context.projectId || null;
+    const candidateTasks = taskTitleHint
+      ? await Task.find({
+          title: buildRegex(taskTitleHint),
+          ...(searchProjectId ? { projectId: searchProjectId } : {}),
+        })
+        .populate('projectId', 'name')
+        .populate('assignedDeveloper', 'name email')
+        .sort({ updatedAt: -1 })
+        .limit(10)
+      : [];
+
+    if (!candidateTasks.length) {
+      return {
+        executed: false,
+        mode: 'command',
+        reply: taskTitleHint
+          ? `I could not find a task matching "${taskTitleHint}".`
+          : 'I need the exact task name before deleting it.',
+        requiresClarification: true,
+        pendingCommand: { intent, task_name: taskTitleHint, project_name: projectName, text },
+      };
+    }
+
+    const selectedTask = candidateTasks[0];
+    return buildPendingConfirmation({
+      command: 'DELETE_TASK',
+      context: { text },
+      message: `Delete task ${selectedTask.title} from ${selectedTask.projectId?.name || projectName || 'this project'}?`,
+      payload: {
+        command: 'DELETE_TASK',
+        taskId: selectedTask._id.toString(),
+        taskName: selectedTask.title,
+        projectId: selectedTask.projectId?._id?.toString?.() || searchProjectId?.toString?.() || null,
+        projectName: selectedTask.projectId?.name || projectName || '',
+      },
+    });
   }
 
   if (command === 'assign_task') {
@@ -937,17 +1044,23 @@ const executeCommand = async ({ user, text, context = {}, intent, entities = {},
         };
       }
       const title = context.title || taskName || entities.task_name || text;
+      const assigneeName = entities.user_name || pendingCommand.user_name || context.userName || '';
+      const assigneeLabel = resolvedUser?._id ? formatName(resolvedUser) : assigneeName;
       return buildPendingConfirmation({
         command,
         context: { text },
-        message: `Create task ${title} in ${project.name}?`,
+        message: assigneeLabel
+          ? `Create task ${title} in ${project.name} and assign it to ${assigneeLabel}?`
+          : `Create task ${title} in ${project.name}?`,
         payload: {
           command,
           title,
           description: context.description || '',
           projectId: project._id.toString(),
+          projectName: project.name,
           panelId: context.panelId || null,
           userId: resolvedUser?._id?.toString?.() || null,
+          userName: assigneeLabel || null,
           priority: context.priority || 'medium',
           deadline: context.deadline || null,
         },
@@ -1045,14 +1158,18 @@ const executeCommand = async ({ user, text, context = {}, intent, entities = {},
           reply: 'I could not find the task to update.',
         };
       }
+      const renamedTitle = entities.new_name || context.title || task.title;
       return buildPendingConfirmation({
         command,
         context: { text },
-        message: `Update ${formatTaskTitle(task)}?`,
+        message: renamedTitle && renamedTitle !== task.title
+          ? `Rename ${formatTaskTitle(task)} to ${renamedTitle}?`
+          : `Update ${formatTaskTitle(task)}?`,
         payload: {
           command,
           taskId: task._id.toString(),
-          title: context.title || task.title,
+          title: renamedTitle,
+          newName: entities.new_name || null,
           description: context.description,
           deadline: context.deadline,
           priority: context.priority,
@@ -1126,12 +1243,33 @@ const executeCommand = async ({ user, text, context = {}, intent, entities = {},
   }
 
   if (intent === 'create_project') {
+    const targetName = extractProjectNameHint(text) || entities.project_name || pendingCommand.project_name || context.name || projectName || taskName || '';
+    if (!targetName) {
+      return {
+        executed: false,
+        mode: 'command',
+        reply: 'I need a project name before I can create it.',
+        requiresClarification: true,
+        pendingCommand: { intent, project_name: '', text },
+      };
+    }
+    const existingProject = await Project.findOne({
+      createdBy: user._id,
+      name: new RegExp(`^${escapeRegExp(normalize(targetName))}$`, 'i'),
+    });
+    if (existingProject) {
+      return {
+        executed: false,
+        mode: 'command',
+        reply: `Project ${existingProject.name} already exists.`,
+      };
+    }
     const result = await runController(createProject, {
       ...context,
       user,
       userId: user._id,
       body: {
-        name: extractProjectNameHint(text) || entities.project_name || pendingCommand.project_name || context.name || projectName || taskName || text,
+        name: targetName,
         description: context.description || '',
         githubRepository: context.githubRepository || '',
       },
@@ -1145,10 +1283,10 @@ const executeCommand = async ({ user, text, context = {}, intent, entities = {},
   }
 
   if (intent === 'delete_project') {
-    if (!resolvedProject && !projectId && !context.projectId) {
+    if (!resolvedProject && !projectId) {
       return { executed: false, mode: 'command', reply: 'I need the project name before I can delete it.' };
     }
-    const targetProjectId = projectId || context.projectId || resolvedProject?._id;
+    const targetProjectId = resolvedProject?._id || projectId;
     const project = resolvedProject || (targetProjectId ? await Project.findById(targetProjectId) : null);
     if (project) {
       await runController(deleteProject, {
@@ -1163,11 +1301,20 @@ const executeCommand = async ({ user, text, context = {}, intent, entities = {},
   }
 
   if (intent === 'rename_project') {
-    const targetProjectId = projectId || context.projectId || resolvedProject?._id;
+    const targetProjectId = resolvedProject?._id || projectId;
     const project = resolvedProject || (targetProjectId ? await Project.findById(targetProjectId) : null);
-    const newName = context.newName || entities.new_name || entities.project_name || projectName || text;
+    const newName = context.newName || entities.new_name || entities.project_name || pendingCommand.new_name || projectName || '';
     if (!project) {
       return { executed: false, mode: 'command', reply: 'I could not find the project to rename.' };
+    }
+    if (!newName) {
+      return {
+        executed: false,
+        mode: 'command',
+        reply: 'I need the new project name before I can rename it.',
+        requiresClarification: true,
+        pendingCommand: { intent, project_name: project.name, new_name: '', text },
+      };
     }
     const result = await runController(updateProject, {
       ...context,
@@ -1183,6 +1330,36 @@ const executeCommand = async ({ user, text, context = {}, intent, entities = {},
     });
     const updatedProject = result.body?.project || project;
     return { executed: true, mode: 'command', reply: formatProjectResponse(updatedProject, 'rename') };
+  }
+
+  if (intent === 'analyze_project') {
+    const targetProjectId = resolvedProject?._id || projectId || context.projectId || null;
+    if (!targetProjectId) {
+      return {
+        executed: false,
+        mode: 'command',
+        reply: 'I need a project name before I can show a summary.',
+        requiresClarification: true,
+        pendingCommand: { intent, project_name: projectName, text },
+      };
+    }
+    const summary = await buildProjectSummary(targetProjectId);
+    if (!summary) {
+      return {
+        executed: false,
+        mode: 'command',
+        reply: 'I could not find that project.',
+      };
+    }
+    const { project, total, completed, inProgress, pending, review, progress } = summary;
+    const description = project.description?.trim() || 'No description added yet.';
+    return {
+      executed: true,
+      mode: 'command',
+      reply: `${project.name} is ${progress}% complete. ${description} It has ${total} tasks: ${completed} done, ${inProgress} in progress, ${review} in review, and ${pending} pending.`,
+      projectId: project._id.toString(),
+      projectName: project.name,
+    };
   }
 
   if (intent === 'add_member') {
@@ -1358,7 +1535,7 @@ const executeCommand = async ({ user, text, context = {}, intent, entities = {},
       user,
       userId: user._id,
       body: {
-        title: context.title,
+        title: context.title || context.newName || entities.new_name,
         description: context.description,
         deadline: context.deadline,
         priority: context.priority,
@@ -1426,8 +1603,15 @@ const executeCommand = async ({ user, text, context = {}, intent, entities = {},
 
 export async function handleZentrixaMessage(req, res) {
   try {
-    const { text = '', context = {}, entities = {}, taskId, projectId } = req.body || {};
-    const cleaned = normalize(text);
+    const {
+      text = '',
+      message = '',
+      context = {},
+      entities = {},
+      taskId,
+      projectId,
+    } = req.body || {};
+    const cleaned = normalize(text || message);
 
     if (!cleaned) {
       return res.status(400).json({ executed: false, mode: 'chat', reply: 'Say something and I’ll help.' });
@@ -1451,8 +1635,8 @@ export async function handleZentrixaMessage(req, res) {
       context,
     }) ? 'add_member' : rawIntent;
     const generalChat = isGeneralChat(cleaned)
-      || (classified ? classified.mode === 'chat' : intent === 'unknown')
-      || (classified?.intent === 'unknown' && !pendingCommand);
+      || (classified ? classified.mode === 'chat' && heuristicIntent === 'unknown' && intent === 'unknown' : intent === 'unknown')
+      || (classified?.intent === 'unknown' && !pendingCommand && heuristicIntent === 'unknown');
     const extractedEntities = extractEntities(cleaned, intent);
     const mergedEntities = {
       ...extractedEntities,
