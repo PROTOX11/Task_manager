@@ -11,15 +11,22 @@ export const getProjects = async (req, res) => {
     let projects;
     
     if (req.user.role === 'admin') {
-      // Admin sees all projects they created
-      projects = await Project.find({ createdBy: req.userId })
+      // Admin sees projects they created OR are added as an admin to
+      projects = await Project.find({
+        $or: [
+          { createdBy: req.userId },
+          { admins: req.userId }
+        ]
+      })
         .populate('developers', 'name email')
+        .populate('admins', 'name email')
         .populate('createdBy', 'name email')
         .sort({ createdAt: -1 });
     } else {
       // Developers see only projects they're part of
       projects = await Project.find({ developers: req.userId })
         .populate('developers', 'name email')
+        .populate('admins', 'name email')
         .populate('createdBy', 'name email')
         .sort({ createdAt: -1 });
     }
@@ -36,6 +43,7 @@ export const getAllProjects = async (req, res) => {
   try {
     const projects = await Project.find()
       .populate('developers', 'name email')
+      .populate('admins', 'name email')
       .populate('createdBy', 'name email')
       .sort({ createdAt: -1 });
 
@@ -102,6 +110,7 @@ export const createProject = async (req, res) => {
 
     const populatedProject = await Project.findById(project._id)
       .populate('developers', 'name email')
+      .populate('admins', 'name email')
       .populate('createdBy', 'name email')
       .populate('panels');
 
@@ -122,6 +131,7 @@ export const getProjectById = async (req, res) => {
 
     const project = await Project.findById(id)
       .populate('developers', 'name email role')
+      .populate('admins', 'name email')
       .populate('createdBy', 'name email')
       .populate('panels');
 
@@ -181,6 +191,7 @@ export const updateProject = async (req, res) => {
 
     const updatedProject = await Project.findById(id)
       .populate('developers', 'name email')
+      .populate('admins', 'name email')
       .populate('createdBy', 'name email')
       .populate('panels');
 
@@ -275,6 +286,58 @@ export const inviteDeveloper = async (req, res) => {
     }
     console.error('Invite developer error:', error);
     res.status(500).json({ message: 'Error inviting developer', error: error.message });
+  }
+};
+
+// Add admin to project (admin only — grants another admin full project control)
+export const addAdminToProject = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { adminId } = req.body;
+
+    if (!adminId) {
+      return res.status(400).json({ message: 'adminId is required' });
+    }
+
+    const project = await Project.findById(id);
+    if (!project) {
+      return res.status(404).json({ message: 'Project not found' });
+    }
+
+    // Only the project creator or existing co-admins can add new admins
+    const isCreator = project.createdBy.toString() === req.userId.toString();
+    const isCoAdmin = (project.admins || []).some((a) => a.toString() === req.userId.toString());
+    if (!isCreator && !isCoAdmin) {
+      return res.status(403).json({ message: 'Not authorized to add admins to this project' });
+    }
+
+    const targetAdmin = await User.findById(adminId);
+    if (!targetAdmin || targetAdmin.role !== 'admin') {
+      return res.status(404).json({ message: 'Admin user not found' });
+    }
+
+    // Cannot add the creator as a co-admin (already has full access)
+    if (adminId.toString() === project.createdBy.toString()) {
+      return res.status(400).json({ message: 'This user is already the project owner' });
+    }
+
+    const alreadyAdmin = (project.admins || []).some((a) => a.toString() === adminId.toString());
+    if (alreadyAdmin) {
+      return res.status(409).json({ message: 'This admin is already added to the project' });
+    }
+
+    project.admins = [...(project.admins || []), adminId];
+    await project.save();
+
+    // Give the new admin access via joinedProjects so getProjects returns it
+    await User.findByIdAndUpdate(adminId, {
+      $addToSet: { joinedProjects: project._id }
+    });
+
+    res.json({ message: `${targetAdmin.name} added as project admin`, adminId });
+  } catch (error) {
+    console.error('Add admin to project error:', error);
+    res.status(500).json({ message: 'Error adding admin to project', error: error.message });
   }
 };
 

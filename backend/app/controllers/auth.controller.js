@@ -842,3 +842,32 @@ export const getAllUsers = async (req, res) => {
     res.status(500).json({ message: 'Error fetching users', error: error.message });
   }
 };
+
+// Get all admins (admin only - for project co-admin selection)
+export const getAdmins = async (req, res) => {
+  try {
+    if (!ensureDatabaseConnection(res)) {
+      return;
+    }
+
+    const search = (req.query.search || '').toString().trim();
+    const query = { role: 'admin' };
+
+    if (search) {
+      const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      query['$or'] = [
+        { name: { '$regex': escapedSearch, '$options': 'i' } },
+        { email: { '$regex': escapedSearch, '$options': 'i' } },
+      ];
+    }
+
+    const admins = await User.find(query)
+      .select('name email avatar role')
+      .sort({ name: 1 });
+
+    res.json({ admins });
+  } catch (error) {
+    console.error('Get admins error:', error);
+    res.status(500).json({ message: 'Error fetching admins', error: error.message });
+  }
+};

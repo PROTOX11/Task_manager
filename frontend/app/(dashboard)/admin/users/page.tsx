@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { useAuth } from "@/lib/auth-context";
@@ -12,10 +13,10 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
-import { Plus, Search } from "lucide-react";
+import { ChevronDown, Plus, Search } from "lucide-react";
 
 type AdminUser = {
   id: string;
@@ -91,9 +92,12 @@ export default function AdminUsersPage() {
   const [filteredUsers, setFilteredUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
-  const [selectedProjectId, setSelectedProjectId] = useState("");
   const [invitingTarget, setInvitingTarget] = useState<{ projectId: string; developerId: string } | null>(null);
   const [invitedDeveloperIdsByProject, setInvitedDeveloperIdsByProject] = useState<Record<string, string[]>>({});
+  const [openDropdownUserId, setOpenDropdownUserId] = useState<string | null>(null);
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; right: number } | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     if (!isLoading && user && user.role !== "admin") {
@@ -126,23 +130,29 @@ export default function AdminUsersPage() {
     void loadProjects();
   }, [isLoading, user, router]);
 
+  // Mount flag for portal
+  useEffect(() => { setMounted(true); }, []);
+
+  // Close dropdown when clicking outside
   useEffect(() => {
-    if (!selectedProjectId && projects.length > 0) {
-      setSelectedProjectId(projects[0].id);
-    }
-  }, [projects, selectedProjectId]);
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setOpenDropdownUserId(null);
+        setDropdownPos(null);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
-  const selectedProject = useMemo(
-    () => projects.find((project) => project.id === selectedProjectId),
-    [projects, selectedProjectId]
-  );
+  const getProjectDeveloperIds = (projectId: string) =>
+    new Set((projects.find((p) => p.id === projectId)?.developers || []).map((d) => d.id));
 
-  const selectedProjectDeveloperIds = useMemo(
-    () => new Set((selectedProject?.developers || []).map((developer) => developer.id)),
-    [selectedProject]
-  );
+  const isAlreadyInProject = (developerId: string, projectId: string) =>
+    getProjectDeveloperIds(projectId).has(developerId);
 
-  const invitedDeveloperIds = invitedDeveloperIdsByProject[selectedProjectId] || [];
+  const isAlreadyInvited = (developerId: string, projectId: string) =>
+    (invitedDeveloperIdsByProject[projectId] || []).includes(developerId);
 
   useEffect(() => {
     if (isLoading || !user || user.role !== "admin") {
@@ -186,45 +196,44 @@ export default function AdminUsersPage() {
     };
   }, [isLoading, user, router, search]);
 
-  const addDeveloperToProject = async (developer: AdminUser) => {
-    if (!selectedProjectId) {
-      toast.error("Select a project first.");
+  const addDeveloperToProject = async (developer: AdminUser, projectId: string) => {
+    const project = projects.find((p) => p.id === projectId);
+
+    if (isAlreadyInProject(developer.id, projectId)) {
+      toast.info(`${developer.name} is already in ${project?.name || "this project"}.`);
       return;
     }
 
-    if (selectedProjectDeveloperIds.has(developer.id)) {
-      toast.info(`${developer.name} is already in this project.`);
+    if (isAlreadyInvited(developer.id, projectId)) {
       return;
     }
 
-    if (invitedDeveloperIds.includes(developer.id)) {
-      return;
-    }
+    setOpenDropdownUserId(null);
 
     try {
-      setInvitingTarget({ projectId: selectedProjectId, developerId: developer.id });
-      await apiRequest(`/projects/${selectedProjectId}/invite`, {
+      setInvitingTarget({ projectId, developerId: developer.id });
+      await apiRequest(`/projects/${projectId}/invite`, {
         method: "POST",
         body: JSON.stringify({
           developerId: developer.id,
-          message: `You have been invited to join ${selectedProject?.name || "this project"}`,
+          message: `You have been invited to join ${project?.name || "this project"}`,
         }),
       });
-      toast.success(`Invitation sent to ${developer.name}`);
+      toast.success(`Invitation sent to ${developer.name} for ${project?.name}`);
       setInvitedDeveloperIdsByProject((current) => ({
         ...current,
-        [selectedProjectId]: current[selectedProjectId]?.includes(developer.id)
-          ? current[selectedProjectId]
-          : [...(current[selectedProjectId] || []), developer.id],
+        [projectId]: current[projectId]?.includes(developer.id)
+          ? current[projectId]
+          : [...(current[projectId] || []), developer.id],
       }));
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
-        toast.info(`${developer.name} is already in this project.`);
+        toast.info(`${developer.name} is already in ${project?.name || "this project"}.`);
         setInvitedDeveloperIdsByProject((current) => ({
           ...current,
-          [selectedProjectId]: current[selectedProjectId]?.includes(developer.id)
-            ? current[selectedProjectId]
-            : [...(current[selectedProjectId] || []), developer.id],
+          [projectId]: current[projectId]?.includes(developer.id)
+            ? current[projectId]
+            : [...(current[projectId] || []), developer.id],
         }));
         return;
       }
@@ -259,18 +268,7 @@ export default function AdminUsersPage() {
     return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
   };
 
-  const getInviteState = (developerId: string) => {
-    if (selectedProjectDeveloperIds.has(developerId)) {
-      return "member" as const;
-    }
-    if (invitedDeveloperIds.includes(developerId)) {
-      return "invited" as const;
-    }
-    if (invitingTarget?.projectId === selectedProjectId && invitingTarget.developerId === developerId) {
-      return "loading" as const;
-    }
-    return "idle" as const;
-  };
+
 
   if (errorMessage) {
     return (
@@ -293,28 +291,14 @@ export default function AdminUsersPage() {
             Search developers by name or email, then add them to a project
           </p>
         </div>
-        <div className="flex flex-col gap-3 md:flex-row md:items-center">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search developers by name or email"
-              className="w-full pl-9 md:w-[280px]"
-            />
-          </div>
-          <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
-            <SelectTrigger className="w-full md:w-[240px]">
-              <SelectValue placeholder="Select project" />
-            </SelectTrigger>
-            <SelectContent>
-              {projects.map((project) => (
-                <SelectItem key={project.id} value={project.id}>
-                  {project.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search developers by name or email"
+            className="w-full pl-9 md:w-[280px]"
+          />
         </div>
       </div>
 
@@ -337,22 +321,13 @@ export default function AdminUsersPage() {
                 <TableHead>Code</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Joined</TableHead>
-                <TableHead className="text-right">Action</TableHead>
+                <TableHead className="text-right">Add to Project</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredUsers.map((u) => {
-                const inviteState = getInviteState(u.id);
-                const isBusy = inviteState === "loading";
-                const isLocked = inviteState === "member" || inviteState === "invited";
-                const buttonLabel =
-                  inviteState === "member"
-                    ? "In project"
-                    : inviteState === "invited"
-                      ? "Invited"
-                      : isBusy
-                        ? "Inviting..."
-                        : "Invite";
+                const isBusy = invitingTarget?.developerId === u.id;
+                const isOpen = openDropdownUserId === u.id;
 
                 return (
                   <TableRow key={u.id}>
@@ -377,23 +352,40 @@ export default function AdminUsersPage() {
                       {formatJoinedDate(u.createdAt)}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => void addDeveloperToProject(u)}
-                        disabled={!selectedProjectId || isBusy || isLocked}
-                        className={cn(
-                          "transition-all duration-200 ease-in-out disabled:cursor-not-allowed",
-                          isLocked && "bg-muted/40 text-muted-foreground shadow-none"
-                        )}
-                      >
-                        {isBusy ? (
-                          <Spinner className="mr-2 h-4 w-4" />
-                        ) : (
-                          <Plus className="mr-2 h-4 w-4" />
-                        )}
-                        {buttonLabel}
-                      </Button>
+                      <div className="inline-block">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={isBusy || projects.length === 0}
+                          onClick={(e) => {
+                            if (isOpen) {
+                              setOpenDropdownUserId(null);
+                              setDropdownPos(null);
+                            } else {
+                              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                              setDropdownPos({
+                                top: rect.bottom + window.scrollY + 4,
+                                right: window.innerWidth - rect.right,
+                              });
+                              setOpenDropdownUserId(u.id);
+                            }
+                          }}
+                          className="transition-all duration-200 ease-in-out"
+                        >
+                          {isBusy ? (
+                            <Spinner className="mr-2 h-4 w-4" />
+                          ) : (
+                            <Plus className="mr-1.5 h-4 w-4" />
+                          )}
+                          {isBusy ? "Inviting..." : "Add to Project"}
+                          <ChevronDown
+                            className={cn(
+                              "ml-1.5 h-3.5 w-3.5 transition-transform duration-200",
+                              isOpen && "rotate-180"
+                            )}
+                          />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
@@ -416,6 +408,58 @@ export default function AdminUsersPage() {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Portal dropdown — renders above everything, fixed to viewport */}
+      {mounted && openDropdownUserId && dropdownPos &&
+        createPortal(
+          <div
+            ref={dropdownRef}
+            style={{
+              position: "fixed",
+              top: dropdownPos.top,
+              right: dropdownPos.right,
+              zIndex: 9999,
+            }}
+            className="min-w-[220px] rounded-lg border bg-popover shadow-xl ring-1 ring-black/5 animate-in fade-in-0 zoom-in-95"
+          >
+            <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground border-b">
+              Select project
+            </p>
+            <ul className="max-h-60 overflow-y-auto py-1">
+              {projects.map((project) => {
+                const u = filteredUsers.find((usr) => usr.id === openDropdownUserId)!;
+                const inProject = u ? isAlreadyInProject(u.id, project.id) : false;
+                const invited = u ? isAlreadyInvited(u.id, project.id) : false;
+                const disabled = inProject || invited;
+                return (
+                  <li key={project.id}>
+                    <button
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => u && void addDeveloperToProject(u, project.id)}
+                      className={cn(
+                        "flex w-full items-center justify-between gap-2 px-3 py-2 text-sm transition-colors",
+                        disabled
+                          ? "cursor-not-allowed text-muted-foreground"
+                          : "cursor-pointer hover:bg-accent hover:text-accent-foreground"
+                      )}
+                    >
+                      <span className="truncate">{project.name}</span>
+                      {inProject && (
+                        <Badge variant="secondary" className="shrink-0 text-[10px]">Member</Badge>
+                      )}
+                      {invited && !inProject && (
+                        <Badge variant="outline" className="shrink-0 text-[10px]">Invited</Badge>
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>,
+          document.body
+        )
+      }
     </div>
   );
 }

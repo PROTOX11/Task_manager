@@ -35,6 +35,7 @@ interface DataContextType {
   getProjectById: (id: string) => Project | undefined;
   getTaskById: (id: string) => Task | undefined;
   getMyTasks: () => Task[];
+  addAdminToProject: (projectId: string, adminId: string) => Promise<void>;
 }
 
 interface CreateProjectData {
@@ -248,6 +249,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           joinedAt: new Date().toISOString(),
         }));
         const members = [{ user: owner, role: "owner" as const, joinedAt: new Date().toISOString() }, ...developerMembers];
+        const admins = (apiProject.admins || []).map((a: any) => mapApiUser(a));
 
         return {
           id: projectId,
@@ -257,6 +259,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           status: apiProject.status || "active",
           owner,
           members,
+          admins,
           panels: (panelResponse.panels || []).map((p: any) => ({
             id: p._id.toString(),
             name: p.name,
@@ -792,6 +795,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const getProjectById = (id: string) => projects.find((p) => p.id === id);
 
+  const addAdminToProject = async (projectId: string, adminId: string) => {
+    await apiRequest(`/projects/${projectId}/add-admin`, {
+      method: "POST",
+      body: JSON.stringify({ adminId }),
+    });
+    await loadProjects();
+  };
+
   const getTaskById = (id: string): Task | undefined => {
     for (const project of projects) {
       for (const panel of project.panels) {
@@ -847,6 +858,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         getProjectById,
         getTaskById,
         getMyTasks,
+        addAdminToProject,
       }}
     >
       {children}

@@ -1050,9 +1050,9 @@ export function KanbanBoard({ project, onTaskClick, onAddTask }: KanbanBoardProp
             <Button
               type="button"
               variant="outline"
-              size="sm"
+              size="default"
               onClick={() => scrollByPanel(-1)}
-              className="rounded-full"
+              className="h-[42px] rounded-full px-4 text-base"
               title="Scroll left one panel"
             >
               ←
@@ -1060,9 +1060,9 @@ export function KanbanBoard({ project, onTaskClick, onAddTask }: KanbanBoardProp
             <Button
               type="button"
               variant="outline"
-              size="sm"
+              size="default"
               onClick={() => scrollByPanel(1)}
-              className="rounded-full"
+              className="h-[42px] rounded-full px-4 text-base"
               title="Scroll right one panel"
             >
               →
@@ -1074,21 +1074,21 @@ export function KanbanBoard({ project, onTaskClick, onAddTask }: KanbanBoardProp
             type="button"
             onClick={toggleOverviewMode}
             aria-pressed={isOverview}
-            className={`inline-flex h-9 w-9 items-center justify-center rounded-md border bg-background text-foreground shadow-xs outline-none transition-all duration-300 ease-in-out max-[767px]:h-10 max-[767px]:w-10 ${
+            className={`inline-flex h-[42px] w-[42px] items-center justify-center rounded-md border bg-background text-foreground shadow-xs outline-none transition-all duration-300 ease-in-out max-[767px]:h-12 max-[767px]:w-12 ${
               panelLayout === "horizontal"
                 ? "absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
                 : ""
             }`}
             title={isOverview ? "Exit overview" : "Enter overview"}
           >
-            <span className="relative flex h-4 w-4 items-center justify-center">
+            <span className="relative flex h-5 w-5 items-center justify-center">
               <LayoutGrid
-                className={`absolute h-4 w-4 transition-all duration-300 ease-in-out max-[767px]:h-5 max-[767px]:w-5 ${
+                className={`absolute h-5 w-5 transition-all duration-300 ease-in-out max-[767px]:h-6 max-[767px]:w-6 ${
                   isOverview ? "rotate-90 scale-75 opacity-0" : "rotate-0 scale-100 opacity-100"
                 }`}
               />
               <X
-                className={`absolute h-4 w-4 transition-all duration-300 ease-in-out max-[767px]:h-5 max-[767px]:w-5 ${
+                className={`absolute h-5 w-5 transition-all duration-300 ease-in-out max-[767px]:h-6 max-[767px]:w-6 ${
                   isOverview ? "rotate-0 scale-100 opacity-100" : "-rotate-90 scale-75 opacity-0"
                 }`}
               />
@@ -1099,17 +1099,17 @@ export function KanbanBoard({ project, onTaskClick, onAddTask }: KanbanBoardProp
           <Button
             type="button"
             variant="outline"
-            size="icon-sm"
+            size="icon"
             onClick={() =>
               setPanelLayout((current) => (current === "horizontal" ? "vertical" : "horizontal"))
             }
-            className="shrink-0 rounded-full max-[767px]:h-10 max-[767px]:w-10"
+            className="h-[42px] w-[42px] shrink-0 rounded-full max-[767px]:h-12 max-[767px]:w-12"
             title={panelLayout === "horizontal" ? "Switch to vertical scroll" : "Switch to horizontal scroll"}
           >
             {panelLayout === "horizontal" ? (
-              <Rows3 className="h-4 w-4 max-[767px]:h-5 max-[767px]:w-5" />
+              <Rows3 className="h-5 w-5 max-[767px]:h-6 max-[767px]:w-6" />
             ) : (
-              <Columns3 className="h-4 w-4 max-[767px]:h-5 max-[767px]:w-5" />
+              <Columns3 className="h-5 w-5 max-[767px]:h-6 max-[767px]:w-6" />
             )}
           </Button>
           <div className="relative">
@@ -1117,11 +1117,11 @@ export function KanbanBoard({ project, onTaskClick, onAddTask }: KanbanBoardProp
               type="button"
               ref={taskSearchButtonRef}
               variant="outline"
-              size="sm"
-              className="gap-2 rounded-full"
+              size="default"
+              className="h-[42px] gap-2 rounded-full px-4"
               onClick={() => setTaskSearchOpen((current) => !current)}
             >
-              <Search className="h-4 w-4" />
+              <Search className="h-5 w-5" />
               <span className="hidden sm:inline">Search</span>
             </Button>
             {taskSearchOpen && (

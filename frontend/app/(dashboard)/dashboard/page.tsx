@@ -56,6 +56,7 @@ export default function DashboardPage() {
   ).length;
 
   const activeProjects = projects.filter((p) => p.status === "active").length;
+  const completedProjects = projects.filter((p) => p.status === "completed").length;
 
   const filteredProjects = useMemo(() => {
     if (selectedFilter === "active-projects") {
@@ -122,8 +123,8 @@ export default function DashboardPage() {
       bgColor: "bg-purple-500/10",
     },
     {
-      title: "Completed",
-      value: completedTasks,
+      title: "Completed Projects",
+      value: completedProjects,
       icon: CheckCircle2,
       color: "text-emerald-500",
       bgColor: "bg-emerald-500/10",
@@ -185,7 +186,7 @@ export default function DashboardPage() {
             aria-pressed={
               (stat.title === "Active Projects" && selectedFilter === "active-projects") ||
               (stat.title === "My Tasks" && selectedFilter === "my-tasks") ||
-              (stat.title === "Completed" && selectedFilter === "completed") ||
+              (stat.title === "Completed Projects" && selectedFilter === "completed") ||
               (stat.title === "Pending" && selectedFilter === "pending") ||
               (stat.title === "Overdue" && selectedFilter === "overdue") ||
               (stat.title === "Total Projects" && selectedFilter === "all")
@@ -194,7 +195,7 @@ export default function DashboardPage() {
               if (stat.title === "Total Projects") setSelectedFilter("all");
               if (stat.title === "Active Projects") setSelectedFilter("active-projects");
               if (stat.title === "My Tasks") setSelectedFilter("my-tasks");
-              if (stat.title === "Completed") setSelectedFilter("completed");
+              if (stat.title === "Completed Projects") setSelectedFilter("completed");
               if (stat.title === "Pending") setSelectedFilter("pending");
               if (stat.title === "Overdue") setSelectedFilter("overdue");
             }}
@@ -207,7 +208,7 @@ export default function DashboardPage() {
             className={`cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md ${
               (stat.title === "Active Projects" && selectedFilter === "active-projects") ||
               (stat.title === "My Tasks" && selectedFilter === "my-tasks") ||
-              (stat.title === "Completed" && selectedFilter === "completed") ||
+              (stat.title === "Completed Projects" && selectedFilter === "completed") ||
               (stat.title === "Pending" && selectedFilter === "pending") ||
               (stat.title === "Overdue" && selectedFilter === "overdue") ||
               (stat.title === "Total Projects" && selectedFilter === "all")

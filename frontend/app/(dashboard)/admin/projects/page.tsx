@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useData } from "@/lib/data-context";
 import type { Project } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { apiRequest } from "@/lib/api";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -15,8 +16,11 @@ import {
   FolderKanban,
   LayoutGrid,
   ListFilter,
+  MoreHorizontal,
   Search,
+  ShieldPlus,
   Sparkles,
+  Trash2,
   Users2,
 } from "lucide-react";
 
@@ -29,14 +33,33 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { toast } from "sonner";
 
-const statusFilters = ["all", "active", "completed", "archived"] as const;
+const statusFilters = ["all", "active", "completed", "archived", "starred"] as const;
 const sortOptions = ["recent", "progress", "name"] as const;
 
 type StatusFilter = (typeof statusFilters)[number];
 type SortOption = (typeof sortOptions)[number];
+
+type AdminOption = { id: string; name: string; email: string };
 
 function getTaskStats(project: Project) {
   const tasks = project.panels.flatMap((panel) => panel.tasks);
@@ -54,6 +77,8 @@ function getStatusStyles(status: Project["status"]) {
       return "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
     case "completed":
       return "border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-400";
+    case "starred":
+      return "border-yellow-500/20 bg-yellow-500/10 text-yellow-700 dark:text-yellow-400";
     default:
       return "border-zinc-500/20 bg-zinc-500/10 text-zinc-700 dark:text-zinc-400";
   }
@@ -88,7 +113,15 @@ function MetricCard({
   );
 }
 
-function ProjectCard({ project }: { project: Project }) {
+function ProjectCard({
+  project,
+  onAddAdmin,
+  onDelete,
+}: {
+  project: Project;
+  onAddAdmin: (project: Project) => void;
+  onDelete?: (project: Project) => void;
+}) {
   const { totalTasks, completedTasks, activeTasks, progress } = getTaskStats(project);
   const memberCount = project.members.length;
   const panelCount = project.panels.length;
@@ -97,13 +130,49 @@ function ProjectCard({ project }: { project: Project }) {
     <Card className="group overflow-hidden border-border/60 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-md">
       <CardHeader className="space-y-4">
         <div className="flex items-start justify-between gap-3">
-          <div className="space-y-1">
-            <CardTitle className="text-lg">{project.name}</CardTitle>
+          <div className="space-y-1 min-w-0 flex-1">
+            <CardTitle className="text-lg truncate">{project.name}</CardTitle>
             <CardDescription className="line-clamp-2 min-h-10">{project.description}</CardDescription>
           </div>
-          <Badge className={cn("shrink-0 border capitalize", getStatusStyles(project.status))}>
-            {project.status}
-          </Badge>
+          <div className="flex shrink-0 items-center gap-2">
+            <Badge className={cn("shrink-0 border capitalize", getStatusStyles(project.status))}>
+              {project.status}
+            </Badge>
+            {/* Dropdown menu — between View Project and Delete */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0">
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuItem asChild>
+                  <Link href={`/projects/${project.id}`} className="flex items-center gap-2">
+                    <ArrowUpRight className="h-4 w-4" />
+                    View Project
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => onAddAdmin(project)}
+                  className="flex items-center gap-2 text-blue-600 dark:text-blue-400 focus:text-blue-600"
+                >
+                  <ShieldPlus className="h-4 w-4" />
+                  Add Admin
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                {onDelete && (
+                  <DropdownMenuItem
+                    onClick={() => onDelete(project)}
+                    className="flex items-center gap-2 text-destructive focus:text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete Project
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
@@ -155,17 +224,92 @@ function ProjectCard({ project }: { project: Project }) {
 
 export default function AdminProjectsPage() {
   const { user } = useAuth();
-  const { projects } = useData();
+  const { projects, deleteProject, addAdminToProject } = useData();
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [sortBy, setSortBy] = useState<SortOption>("recent");
+
+  // Add Admin dialog state
+  const [addAdminProject, setAddAdminProject] = useState<Project | null>(null);
+  const [adminSearch, setAdminSearch] = useState("");
+  const [admins, setAdmins] = useState<AdminOption[]>([]);
+  const [loadingAdmins, setLoadingAdmins] = useState(false);
+  const [addingAdminId, setAddingAdminId] = useState<string | null>(null);
+
+  // Delete confirmation state
+  const [deleteProject_, setDeleteProject] = useState<Project | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (user && user.role !== "admin") {
       router.push("/dashboard");
     }
   }, [user, router]);
+
+  // Load admins list when dialog opens
+  useEffect(() => {
+    if (!addAdminProject) {
+      setAdmins([]);
+      setAdminSearch("");
+      return;
+    }
+
+    let cancelled = false;
+    const load = async () => {
+      try {
+        setLoadingAdmins(true);
+        const res = await apiRequest<{ admins: Array<any> }>("/auth/admins");
+        if (cancelled) return;
+        const adminUsers = (res.admins || []).map((u: any) => ({
+          id: (u._id || u.id).toString(),
+          name: u.name,
+          email: u.email,
+        }));
+        setAdmins(adminUsers);
+      } catch {
+        if (!cancelled) toast.error("Failed to load admin users");
+      } finally {
+        if (!cancelled) setLoadingAdmins(false);
+      }
+    };
+    void load();
+    return () => { cancelled = true; };
+  }, [addAdminProject]);
+
+  const filteredAdmins = useMemo(() => {
+    const q = adminSearch.trim().toLowerCase();
+    if (!q) return admins;
+    return admins.filter((a) => `${a.name} ${a.email}`.toLowerCase().includes(q));
+  }, [admins, adminSearch]);
+
+  const handleAddAdmin = async (adminId: string) => {
+    if (!addAdminProject) return;
+    try {
+      setAddingAdminId(adminId);
+      await addAdminToProject(addAdminProject.id, adminId);
+      toast.success("Admin added successfully — they now have full control of this project.");
+      setAddAdminProject(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to add admin");
+    } finally {
+      setAddingAdminId(null);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteProject_) return;
+    try {
+      setDeleting(true);
+      await deleteProject(deleteProject_.id);
+      toast.success("Project deleted");
+      setDeleteProject(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete project");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const metrics = useMemo(() => {
     const totalProjects = projects.length;
@@ -361,7 +505,12 @@ export default function AdminProjectsPage() {
           {filteredProjects.length > 0 ? (
             <div className="grid gap-4 lg:grid-cols-2">
               {filteredProjects.map((project) => (
-                <ProjectCard key={project.id} project={project} />
+                <ProjectCard
+                  key={project.id}
+                  project={project}
+                  onAddAdmin={setAddAdminProject}
+                  onDelete={setDeleteProject}
+                />
               ))}
             </div>
           ) : (
@@ -388,6 +537,103 @@ export default function AdminProjectsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Add Admin Dialog */}
+      <Dialog open={Boolean(addAdminProject)} onOpenChange={(open) => { if (!open) setAddAdminProject(null); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldPlus className="h-5 w-5 text-blue-500" />
+              Add Admin to &ldquo;{addAdminProject?.name}&rdquo;
+            </DialogTitle>
+            <DialogDescription>
+              Grant another admin full control of this project — they can manage tasks, panels, members, and settings.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={adminSearch}
+                onChange={(e) => setAdminSearch(e.target.value)}
+                placeholder="Search admins by name or email"
+                className="pl-9"
+              />
+            </div>
+
+            <ScrollArea className="max-h-72 rounded-lg border">
+              <div className="space-y-1.5 p-2">
+                {loadingAdmins ? (
+                  <div className="py-8 text-center text-sm text-muted-foreground">Loading admins…</div>
+                ) : filteredAdmins.length === 0 ? (
+                  <div className="py-8 text-center text-sm text-muted-foreground">No admins found.</div>
+                ) : (
+                  filteredAdmins.map((admin) => {
+                    const alreadyAdded =
+                      addAdminProject?.owner.id === admin.id ||
+                      (addAdminProject?.admins || []).some((a) => a.id === admin.id);
+                    return (
+                      <div
+                        key={admin.id}
+                        className={cn(
+                          "flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5",
+                          alreadyAdded ? "bg-muted/50 opacity-60" : "hover:bg-muted/40"
+                        )}
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">{admin.name}</p>
+                          <p className="truncate text-xs text-muted-foreground">{admin.email}</p>
+                        </div>
+                        {alreadyAdded ? (
+                          <Badge variant="secondary" className="shrink-0 text-[10px]">
+                            {addAdminProject?.owner.id === admin.id ? "Owner" : "Added"}
+                          </Badge>
+                        ) : (
+                          <Button
+                            size="sm"
+                            className="shrink-0"
+                            disabled={addingAdminId === admin.id}
+                            onClick={() => void handleAddAdmin(admin.id)}
+                          >
+                            {addingAdminId === admin.id ? "Adding…" : "Add"}
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </ScrollArea>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddAdminProject(null)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={Boolean(deleteProject_)} onOpenChange={(open) => { if (!open) setDeleteProject(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Project</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete &ldquo;{deleteProject_?.name}&rdquo;? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteProject(null)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={() => void handleDelete()} disabled={deleting}>
+              {deleting ? "Deleting…" : "Delete Project"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

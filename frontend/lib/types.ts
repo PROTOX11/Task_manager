@@ -13,9 +13,10 @@ export interface Project {
   name: string;
   description: string;
   githubRepository?: string;
-  status: 'active' | 'completed' | 'archived';
+  status: 'active' | 'completed' | 'archived' | 'starred';
   owner: User;
   members: ProjectMember[];
+  admins: User[];
   panels: Panel[];
   createdAt: string;
   updatedAt: string;
@@ -139,6 +140,7 @@ export interface Meeting {
 export interface DashboardStats {
   totalProjects: number;
   activeProjects: number;
+  completedProjects: number;
   totalTasks: number;
   completedTasks: number;
   pendingTasks: number;

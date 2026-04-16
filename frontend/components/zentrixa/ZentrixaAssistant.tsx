@@ -104,6 +104,7 @@ export function ZentrixaAssistant({ context }: { context?: ZentrixaContext }) {
   const pendingResponseRef = useRef(false);
   const voiceSessionRef = useRef(false);
   const speechUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const startListeningRef = useRef<(() => void) | null>(null);
 
   const routeProjectId = useMemo(() => {
     const match = pathname?.match(/^\/projects\/([^/?#]+)/);
@@ -152,6 +153,20 @@ export function ZentrixaAssistant({ context }: { context?: ZentrixaContext }) {
     utterance.onend = () => {
       if (speechUtteranceRef.current === utterance) {
         speechUtteranceRef.current = null;
+      }
+      /* After Zentrixa finishes speaking, auto-restart listening
+         so the conversation continues until user switches to chat */
+      if (voiceSessionRef.current) {
+        window.setTimeout(() => {
+          if (voiceSessionRef.current) {
+            try {
+              startListeningRef.current?.();
+            } catch {
+              voiceSessionRef.current = false;
+              setAiMode(null);
+            }
+          }
+        }, 400);
       }
     };
     window.speechSynthesis.speak(utterance);
@@ -267,7 +282,8 @@ export function ZentrixaAssistant({ context }: { context?: ZentrixaContext }) {
       postAssistantMessage(replyText);
       if (voiceSessionRef.current) {
         speakReply(replyText);
-        voiceSessionRef.current = false;
+        /* Don't reset voiceSessionRef here – keep voice mode active
+           so the utterance.onend handler will re-start listening */
       }
       setPendingConfirmation(null);
       setPendingCommand(null);
@@ -447,7 +463,8 @@ export function ZentrixaAssistant({ context }: { context?: ZentrixaContext }) {
       postAssistantMessage(reply);
       if (voiceSessionRef.current) {
         speakReply(reply);
-        voiceSessionRef.current = false;
+        /* Don't reset voiceSessionRef – keep voice mode active
+           for continuous conversation */
       }
 
       if (result.type === "CONFIRM" || result.requiresConfirmation) {
@@ -507,6 +524,11 @@ export function ZentrixaAssistant({ context }: { context?: ZentrixaContext }) {
       await handleSend(text);
     },
   });
+
+  /* Keep startListeningRef in sync so speakReply can call it */
+  useEffect(() => {
+    startListeningRef.current = startListening;
+  }, [startListening]);
 
   useEffect(() => {
     if (error) toast.error(error);
@@ -606,20 +628,9 @@ export function ZentrixaAssistant({ context }: { context?: ZentrixaContext }) {
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="rounded-full"
-                  onClick={() => setOpen(false)}
-                >
-                  Close
-                </Button>
-                <Button variant="ghost" size="icon" onClick={() => setOpen(false)} aria-label="Close Zentrixa">
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
+              <Button variant="ghost" size="icon" onClick={() => setOpen(false)} aria-label="Close Zentrixa">
+                <X className="h-4 w-4" />
+              </Button>
             </div>
 
             <div className="mt-3 flex shrink-0 flex-wrap gap-2">

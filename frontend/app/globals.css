@@ -389,8 +389,19 @@
 
 .zentrixa-ai-listening {
   border: 3px solid #c8a27a;
-  transition: transform 0.08s linear;
+  transition: transform 0.1s ease-out, box-shadow 0.1s ease-out, border-width 0.1s ease-out;
   transform: translateZ(0) scale(var(--zentrixa-ai-scale, 1));
+  box-shadow: 0 0 calc((var(--zentrixa-ai-scale, 1) - 1) * 60px) rgba(200, 162, 122, calc((var(--zentrixa-ai-scale, 1) - 1) * 2));
+  animation: zentrixa-ai-listen-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes zentrixa-ai-listen-pulse {
+  0%, 100% {
+    border-color: rgba(200, 162, 122, 0.7);
+  }
+  50% {
+    border-color: rgba(200, 162, 122, 1);
+  }
 }
 
 .zentrixa-ai-replying {

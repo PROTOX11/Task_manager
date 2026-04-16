@@ -10,7 +10,8 @@ import {
   leaveProject,
   removeProjectMember,
   deleteProject,
-  getProjectStats
+  getProjectStats,
+  addAdminToProject
 } from '../controllers/project.controller.js';
 import { authenticate, authorizeAdmin } from '../middleware/auth.middleware.js';
 
@@ -45,6 +46,9 @@ router.put('/:id', authorizeAdmin, updateProject);
 
 // Invite developer to project (admin only)
 router.post('/:id/invite', authorizeAdmin, inviteDeveloper);
+
+// Add admin to project (admin only — grants full project control)
+router.post('/:id/add-admin', authorizeAdmin, addAdminToProject);
 
 // Remove project member (admin only)
 router.delete('/:id/members/:memberId', authorizeAdmin, removeProjectMember);

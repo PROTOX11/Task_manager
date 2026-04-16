@@ -17,7 +17,8 @@ import {
   getProfile,
   updateProfile,
   getDevelopers,
-  getAllUsers
+  getAllUsers,
+  getAdmins
 } from '../controllers/auth.controller.js';
 import { authenticate, authorizeAdmin } from '../middleware/auth.middleware.js';
 import { upload } from '../middleware/upload.middleware.js';
@@ -137,5 +138,6 @@ router.get('/profile', authenticate, getProfile);
 router.put('/profile', authenticate, upload.single('avatar'), updateProfile);
 router.get('/developers', authenticate, getDevelopers);
 router.get('/users', authenticate, authorizeAdmin, getAllUsers);
+router.get('/admins', authenticate, authorizeAdmin, getAdmins);
 
 export default router;

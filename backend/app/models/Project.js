@@ -22,6 +22,11 @@ const projectSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
+  // Additional admins who have full control over this project
+  admins: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }],
   developers: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
@@ -38,7 +43,7 @@ const projectSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['active', 'completed', 'archived'],
+    enum: ['active', 'completed', 'archived', 'starred'],
     default: 'active'
   },
   totalTasks: {

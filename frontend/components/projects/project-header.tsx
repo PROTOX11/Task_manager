@@ -27,7 +27,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { Field, FieldLabel } from "@/components/ui/field";
-import { MoreHorizontal, Search, UserPlus, Settings, Trash2, Users, X } from "lucide-react";
+import { MoreHorizontal, Search, UserPlus, Settings, Trash2, Users, X, Star } from "lucide-react";
 import { toast } from "sonner";
 import type { Project } from "@/lib/types";
 
@@ -352,9 +352,9 @@ export function ProjectHeader({ project }: ProjectHeaderProps) {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => handleStatusChange("active")}>
-                <Settings className="mr-2 h-4 w-4 max-[767px]:h-5 max-[767px]:w-5" />
-                Mark as Active
+              <DropdownMenuItem onClick={() => handleStatusChange("starred")}>
+                <Star className="mr-2 h-4 w-4 max-[767px]:h-5 max-[767px]:w-5 text-yellow-500" />
+                Mark as Starred
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => handleStatusChange("completed")}>
                 <Settings className="mr-2 h-4 w-4 max-[767px]:h-5 max-[767px]:w-5" />
@@ -391,9 +391,9 @@ export function ProjectHeader({ project }: ProjectHeaderProps) {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => handleStatusChange("active")}>
-                <Settings className="mr-2 h-4 w-4" />
-                Mark as Active
+              <DropdownMenuItem onClick={() => handleStatusChange("starred")}>
+                <Star className="mr-2 h-4 w-4 text-yellow-500" />
+                Mark as Starred
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => handleStatusChange("completed")}>
                 <Settings className="mr-2 h-4 w-4" />
