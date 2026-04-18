@@ -25,6 +25,7 @@ interface SignupData {
   password: string;
   firstName: string;
   lastName: string;
+  role?: string;
 }
 
 interface AdminSignupData extends SignupData {
@@ -209,7 +210,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           name: `${data.firstName} ${data.lastName}`.trim(),
           email: data.email,
           password: data.password,
-          role: "developer",
+          role: data.role || "developer",
         }),
         auth: false,
       }
@@ -252,6 +253,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: data.email,
           password: data.password,
           otp: data.otp,
+          role: data.role,
         }),
         auth: false,
       }
@@ -273,6 +275,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: data.email,
           password: data.password,
           verificationToken: data.verificationToken,
+          role: data.role,
         }),
         auth: false,
       }
