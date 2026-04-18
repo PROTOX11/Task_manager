@@ -447,6 +447,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       githubRepository: response.project.githubRepository || data.githubRepository || "",
       status: response.project.status || "active",
       owner: user!,
+      admins: [],
       members: [{ user: user!, role: "owner", joinedAt: new Date().toISOString() }],
       panels: [],
       createdAt: response.project.createdAt || new Date().toISOString(),
