@@ -264,7 +264,7 @@ export default function HomePage() {
     <main className="min-h-screen overflow-hidden bg-background text-foreground font-sans antialiased">
 
       {/* Dynamic View-Transition Global Styles */}
-      z      <style dangerouslySetInnerHTML={{
+      <style dangerouslySetInnerHTML={{
         __html: `
         ::view-transition-old(root),
         ::view-transition-new(root) {
