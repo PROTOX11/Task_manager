@@ -1,18 +1,7 @@
 version: "3.8"
 
 services:
-  mongodb:
-    image: mongo:6
-    container_name: mongodb
-    restart: always
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongo-data:/data/db
-    networks:
-      - app-network
-
-    backend:
+  backend:
     image: prakash1142/mean-backend
     restart: always
     ports:
@@ -29,11 +18,12 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID}
       RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET}
-    depends_on:
-      - mongodb
+    mem_limit: 400m
+    networks:
+      - app-network
 
   frontend:
-    image: prakash1142/mean-frontend # ✅ use Docker Hub image
+    image: prakash1142/mean-frontend
     container_name: frontend
     restart: always
     ports:
@@ -42,11 +32,9 @@ services:
       - backend
     environment:
       - NEXT_PUBLIC_API_URL=http://backend:5000
+    mem_limit: 250m
     networks:
       - app-network
-
-volumes:
-  mongo-data:
 
 networks:
   app-network:
