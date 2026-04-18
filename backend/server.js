@@ -4,7 +4,7 @@ import mongoose from 'mongoose';
 import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import dotenv from 'dotenv';
+// import dotenv from 'dotenv';
 import { Server as SocketIOServer } from 'socket.io';
 import authRoutes from './app/routes/auth.routes.js';
 import projectRoutes from './app/routes/project.routes.js';
@@ -31,7 +31,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const envPath = path.join(__dirname, '.env');
 
-dotenv.config({ path: envPath });
+// dotenv.config({ path: envPath });
 
 mongoose.set('bufferCommands', false);
 

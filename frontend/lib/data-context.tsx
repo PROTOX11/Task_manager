@@ -161,6 +161,7 @@ const mapProjectRequest = (request: any, viewer: User): ProjectRequest => ({
     status: "active" as const,
     owner: mapApiUser(request.senderId || { id: "", name: "User", email: "", role: "developer" }),
     members: [],
+    admins: [],
     panels: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -523,34 +524,34 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const hasFiles = Array.isArray(data.attachments) && data.attachments.length > 0;
     const response = hasFiles
       ? await apiRequest<{ task: any }>("/tasks", {
-          method: "POST",
-          body: (() => {
-            const formData = new FormData();
-            formData.append("title", data.title);
-            formData.append("description", data.description);
-            formData.append("projectId", data.projectId);
-            formData.append("panelId", data.panelId);
-            formData.append("priority", data.priority);
-            if (data.assigneeId) formData.append("assignedDeveloper", data.assigneeId);
-            if (data.dueDate) formData.append("deadline", data.dueDate);
-            data.attachments?.forEach((file) => {
-              formData.append("attachments", file);
-            });
-            return formData;
-          })(),
-        })
+        method: "POST",
+        body: (() => {
+          const formData = new FormData();
+          formData.append("title", data.title);
+          formData.append("description", data.description);
+          formData.append("projectId", data.projectId);
+          formData.append("panelId", data.panelId);
+          formData.append("priority", data.priority);
+          if (data.assigneeId) formData.append("assignedDeveloper", data.assigneeId);
+          if (data.dueDate) formData.append("deadline", data.dueDate);
+          data.attachments?.forEach((file) => {
+            formData.append("attachments", file);
+          });
+          return formData;
+        })(),
+      })
       : await apiRequest<{ task: any }>("/tasks", {
-          method: "POST",
-          body: JSON.stringify({
-            title: data.title,
-            description: data.description,
-            projectId: data.projectId,
-            panelId: data.panelId,
-            assignedDeveloper: data.assigneeId,
-            priority: data.priority,
-            deadline: data.dueDate,
-          }),
-        });
+        method: "POST",
+        body: JSON.stringify({
+          title: data.title,
+          description: data.description,
+          projectId: data.projectId,
+          panelId: data.panelId,
+          assignedDeveloper: data.assigneeId,
+          priority: data.priority,
+          deadline: data.dueDate,
+        }),
+      });
     await loadProjects();
     const rawAttachments = Array.isArray(response.task.attachments) && response.task.attachments.length > 0
       ? response.task.attachments
@@ -722,11 +723,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
           tasks: panel.tasks.map((task) =>
             task.id === taskId
               ? {
-                  ...task,
-                  subtasks: task.subtasks.map((st) =>
-                    st.id === subtaskId ? { ...st, completed: !st.completed } : st
-                  ),
-                }
+                ...task,
+                subtasks: task.subtasks.map((st) =>
+                  st.id === subtaskId ? { ...st, completed: !st.completed } : st
+                ),
+              }
               : task
           ),
         })),

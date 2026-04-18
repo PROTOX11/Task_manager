@@ -42,7 +42,7 @@ const heroFeatures = [
 function ScrollReveal({ children, delay = 0, className = "" }: { children: React.ReactNode, delay?: number, className?: string }) {
   const [inView, setInView] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  
+
   useEffect(() => {
     const observer = new IntersectionObserver(([entry]) => {
       if (entry.isIntersecting) {
@@ -54,9 +54,9 @@ function ScrollReveal({ children, delay = 0, className = "" }: { children: React
     if (ref.current) observer.observe(ref.current);
     return () => observer.disconnect();
   }, []);
-  
+
   return (
-    <div 
+    <div
       ref={ref}
       className={`transition-all duration-1000 ease-[cubic-bezier(0.25,0.1,0.25,1.0)] ${inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-24"} ${className}`}
       style={{ transitionDelay: `${delay}ms` }}
@@ -69,7 +69,7 @@ function ScrollReveal({ children, delay = 0, className = "" }: { children: React
 function RobotSplitCard() {
   const [inView, setInView] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  
+
   useEffect(() => {
     const observer = new IntersectionObserver(([entry]) => {
       setInView(entry.isIntersecting);
@@ -77,16 +77,16 @@ function RobotSplitCard() {
     if (ref.current) observer.observe(ref.current);
     return () => observer.disconnect();
   }, []);
-  
+
   return (
     <div ref={ref} className="relative w-full max-w-sm rounded-2xl overflow-hidden shadow-sm h-24 flex items-center justify-center">
       {/* Outer wrapper provides the visual container color */}
       <div className="absolute inset-0 bg-primary/10 border border-primary/20 rounded-2xl" />
-      
+
       {/* Left and Right curtains */}
       <div className={`absolute top-0 bottom-0 left-0 w-1/2 bg-card rounded-l-2xl border-y border-l border-border z-10 transition-transform duration-[1200ms] ease-[cubic-bezier(0.85,0,0.15,1)] ${inView ? "-translate-x-full" : "translate-x-0"}`} />
       <div className={`absolute top-0 bottom-0 right-0 w-1/2 bg-card rounded-r-2xl border-y border-r border-border z-10 transition-transform duration-[1200ms] ease-[cubic-bezier(0.85,0,0.15,1)] ${inView ? "translate-x-full" : "translate-x-0"}`} />
-      
+
       {/* Center seam */}
       <div className={`absolute inset-y-0 left-1/2 w-px bg-border z-20 transition-opacity duration-300 ${inView ? "opacity-0" : "opacity-100"}`} />
 
@@ -118,7 +118,7 @@ export default function HomePage() {
   const [authMode, setAuthMode] = useState<"signup" | "login">("signup");
   const [authStep, setAuthStep] = useState<"form" | "otp">("form");
   const [introStage, setIntroStage] = useState<"loading" | "strike" | "ready">("loading");
-  
+
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const [navReady, setNavReady] = useState(false);
@@ -262,9 +262,10 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen overflow-hidden bg-background text-foreground font-sans antialiased">
-      
+
       {/* Dynamic View-Transition Global Styles */}
-      <style dangerouslySetInnerHTML={{__html: `
+      z      <style dangerouslySetInnerHTML={{
+        __html: `
         ::view-transition-old(root),
         ::view-transition-new(root) {
           animation: none;
@@ -299,7 +300,7 @@ export default function HomePage() {
 
       {/* Main Content Wrapper */}
       <div className={`transition-all duration-700 relative ${introStage === "ready" ? "opacity-100 blur-0" : "opacity-0 blur-sm saturate-50 translate-y-4"}`}>
-        
+
         {/* Ambient Gradient Background */}
         <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_top,theme(colors.primary.DEFAULT/0.05)_0%,transparent_100%)] pointer-events-none" />
 
@@ -307,47 +308,47 @@ export default function HomePage() {
         <header className="relative z-10 w-full px-4 pt-4 sm:px-6 lg:px-8 xl:pt-8 bg-gradient-to-b from-background via-background/80 to-transparent">
           <div className="mx-auto max-w-[1400px]">
             <nav className="flex flex-row items-start sm:items-center justify-between mb-8 md:mb-12 gap-2">
-              
+
               {/* Logo Switcher */}
               <div className="relative h-8 w-24 sm:h-10 sm:w-28 md:h-16 md:w-40 lg:h-20 lg:w-48 shrink-0 overflow-hidden mt-1 sm:mt-0">
                 {!mounted ? null : (
                   <>
-                    <Image 
-                      src="/logo/light.png" 
-                      alt="TickZen Logo Light" 
-                      fill 
-                      className={`object-contain transition-opacity duration-[800ms] ${theme !== 'dark' ? 'opacity-100' : 'opacity-0'}`} 
+                    <Image
+                      src="/logo/light.png"
+                      alt="TickZen Logo Light"
+                      fill
+                      className={`object-contain transition-opacity duration-[800ms] ${theme !== 'dark' ? 'opacity-100' : 'opacity-0'}`}
                     />
-                    <Image 
-                      src="/logo/dark.png" 
-                      alt="TickZen Logo Dark" 
-                      fill 
-                      className={`object-contain transition-opacity duration-[800ms] ${theme === 'dark' ? 'opacity-100' : 'opacity-0'}`} 
+                    <Image
+                      src="/logo/dark.png"
+                      alt="TickZen Logo Dark"
+                      fill
+                      className={`object-contain transition-opacity duration-[800ms] ${theme === 'dark' ? 'opacity-100' : 'opacity-0'}`}
                     />
                   </>
                 )}
               </div>
-              
+
               {/* Desktop Nav Actions */}
               <div className="hidden md:flex flex-wrap w-full items-center justify-end gap-2 lg:w-auto lg:gap-3">
                 {["Dashboards", "Features", "Pricing", "Admin Workspace"].map((item, idx) => (
                   <a key={item} href={`#${item.toLowerCase().replace(" ", "-")}`} className="group h-10 flex flex-col justify-center shrink-0">
-                    <div 
+                    <div
                       className={`transition-all duration-[800ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] ${navReady ? "translate-y-0 opacity-100 scale-100" : "-translate-y-16 opacity-0 scale-50"}`}
                       style={{ transitionDelay: `${idx * 100}ms` }}
                     >
-                      <div 
+                      <div
                         className="flex overflow-hidden relative rounded-full bg-secondary text-sm font-medium text-secondary-foreground hover:bg-secondary/80 transition-all duration-[600ms] ease-out hover:scale-105"
                         style={{ width: navReady ? (item.length * 8 + 48) + 'px' : '40px', height: '40px', transitionDelay: navReady ? `${idx * 150 + 200}ms` : '0ms' }}
                       >
-                         <span className="absolute inset-0 flex items-center justify-center whitespace-nowrap transition-opacity duration-[400ms]" style={{ opacity: navReady ? 1 : 0, transitionDelay: navReady ? `${idx * 150 + 500}ms` : '0ms' }}>
-                           {item}
-                         </span>
+                        <span className="absolute inset-0 flex items-center justify-center whitespace-nowrap transition-opacity duration-[400ms]" style={{ opacity: navReady ? 1 : 0, transitionDelay: navReady ? `${idx * 150 + 500}ms` : '0ms' }}>
+                          {item}
+                        </span>
                       </div>
                     </div>
                   </a>
                 ))}
-                
+
                 {mounted && (
                   <button
                     onClick={toggleTheme}
@@ -379,7 +380,7 @@ export default function HomePage() {
             </nav>
 
             <div className="grid gap-12 lg:grid-cols-[1.2fr_0.8fr] lg:items-center pb-12 md:pb-20">
-              
+
               {/* Hero Text */}
               <div className="max-w-3xl">
                 <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary">
@@ -408,7 +409,7 @@ export default function HomePage() {
               <div className={`w-full lg:max-w-md mx-auto lg:ml-auto relative transition-all duration-[1200ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] ${navReady ? "translate-y-0 opacity-100" : "-translate-y-32 opacity-0"}`}>
                 <div className="absolute inset-0 bg-gradient-to-r from-primary/10 to-primary/5 rounded-[2.5rem] blur-xl" />
                 <div className="relative rounded-[2.5rem] bg-card p-6 md:p-8 shadow-2xl border border-border group hover:shadow-primary/20 transition-all duration-500 hover:-translate-y-1 w-full overflow-hidden">
-                  
+
                   <div className="relative mb-8 flex w-full rounded-full bg-secondary p-1.5">
                     <div
                       className="absolute bottom-1.5 left-1.5 top-1.5 w-[calc(50%-6px)] rounded-full bg-background shadow-sm transition-transform duration-500 ease-[cubic-bezier(0.4,0,0.2,1)]"
@@ -429,7 +430,7 @@ export default function HomePage() {
                       Sign Up
                     </button>
                   </div>
-                  
+
                   <form onSubmit={handlePrimarySubmit} className="flex flex-col">
                     <div className={`grid transition-[grid-template-rows,opacity] duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] ${authStep === "form" && authMode === "signup" ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0 pointer-events-none"}`}>
                       <div className="overflow-hidden">
@@ -439,7 +440,7 @@ export default function HomePage() {
                             value={name}
                             onChange={(e) => setName(e.target.value)}
                             placeholder="Enter your name"
-                            className="h-14 w-full !rounded-full border-2 border-transparent bg-secondary px-6 text-base placeholder:text-muted-foreground focus-visible:outline-none focus-visible:!border-primary/50 !ring-0 focus-[box-shadow:none] !shadow-none transition-colors"
+                            className="h-14 w-full rounded-full border-0 bg-secondary px-6 text-base placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary/50"
                             required={authMode === "signup" && authStep === "form"}
                             tabIndex={authMode === "signup" && authStep === "form" ? 0 : -1}
                           />
@@ -455,7 +456,7 @@ export default function HomePage() {
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             placeholder="Enter your email"
-                            className="h-14 w-full !rounded-full border-2 border-transparent bg-secondary px-6 text-base placeholder:text-muted-foreground focus-visible:outline-none focus-visible:!border-primary/50 !ring-0 focus-[box-shadow:none] !shadow-none transition-colors"
+                            className="h-14 w-full rounded-full border-0 bg-secondary px-6 text-base placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary/50"
                             required={authStep === "form"}
                             tabIndex={authStep === "form" ? 0 : -1}
                           />
@@ -475,7 +476,7 @@ export default function HomePage() {
                             value={otp}
                             onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
                             placeholder="Enter OTP"
-                            className="h-14 w-full !rounded-full border-2 border-transparent bg-secondary px-6 text-center text-xl tracking-widest placeholder:text-muted-foreground focus-visible:outline-none focus-visible:!border-primary/50 !ring-0 focus-[box-shadow:none] !shadow-none transition-colors"
+                            className="h-14 w-full rounded-full border-0 bg-secondary px-6 text-center text-xl tracking-widest placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary/50"
                             required={authStep === "otp"}
                             tabIndex={authStep === "otp" ? 0 : -1}
                           />
@@ -518,7 +519,7 @@ export default function HomePage() {
               <div className="relative h-full w-full rounded-[3rem] bg-card border border-border shadow-2xl p-6 md:p-10 flex flex-col items-center justify-center gap-6 overflow-hidden hover:-translate-y-2 transition-transform duration-700 ease-[cubic-bezier(0.25,0.1,0.25,1)]">
                 <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-primary/10 via-transparent to-transparent opacity-60" />
                 <Bot className="w-24 h-24 text-primary animate-pulse transition-transform duration-700 group-hover:scale-110" />
-                
+
                 {/* Advanced Robot Curtain Animation Component */}
                 <RobotSplitCard />
               </div>
@@ -529,7 +530,7 @@ export default function HomePage() {
                 <Sparkles className="h-4 w-4" /> AI Companion
               </div>
               <h2 className="text-4xl md:text-5xl font-black text-foreground tracking-tight leading-tight mb-6">
-                Meet Zentrixa —<br/>Your AI Teammate
+                Meet Zentrixa —<br />Your AI Teammate
               </h2>
               <p className="text-lg text-muted-foreground mb-8 leading-relaxed">
                 Zentrixa understands your commands, creates tasks automatically, tracks deadlines, and alerts you before things go wrong. Stop manually doing what AI can do for you.
@@ -554,7 +555,7 @@ export default function HomePage() {
             <h2 className="text-4xl md:text-5xl font-black text-foreground tracking-tight mb-6">Why TickZen is Different</h2>
             <p className="text-xl text-muted-foreground">Don't manage projects the hard way. See the AI difference.</p>
           </ScrollReveal>
-          
+
           <div className="mx-auto max-w-[1000px] grid md:grid-cols-2 gap-8">
             <ScrollReveal delay={200} className="rounded-[3rem] bg-card border border-border p-8 md:p-10 shadow-lg hover:-translate-y-2 hover:shadow-xl transition-all duration-500 group">
               <div className="mb-8 flex items-center justify-center h-16 w-16 rounded-full bg-red-500/10 text-red-500 mx-auto transition-transform duration-500 group-hover:scale-110">
@@ -574,7 +575,7 @@ export default function HomePage() {
                 ))}
               </ul>
             </ScrollReveal>
-            
+
             <ScrollReveal delay={400} className="rounded-[3rem] bg-primary p-8 md:p-10 shadow-xl text-primary-foreground transition-transform duration-700 ease-out transform md:scale-105 relative z-10 group hover:-translate-y-2 hover:shadow-2xl">
               <div className="absolute top-0 right-0 -m-4">
                 <div className="bg-yellow-400 text-yellow-900 text-xs font-bold px-4 py-2 rounded-full shadow-lg transform rotate-12 rotate-[-12deg]">THE WINNER</div>
@@ -608,7 +609,7 @@ export default function HomePage() {
                 <Bot className="h-4 w-4" /> See It In Action
               </div>
               <h2 className="text-4xl md:text-5xl font-black tracking-tight mb-8 text-foreground">
-                Tell the AI. <br/><span className="text-primary">Consider it done.</span>
+                Tell the AI. <br /><span className="text-primary">Consider it done.</span>
               </h2>
               <div className="bg-card rounded-3xl p-6 border border-border shadow-md relative hover:shadow-lg transition-shadow duration-500">
                 <div className="flex gap-4 items-start mb-6">
@@ -618,10 +619,10 @@ export default function HomePage() {
                   </div>
                 </div>
                 <div className="flex gap-4 items-start">
-                  <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0"><Bot className="w-5 h-5"/></div>
+                  <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0"><Bot className="w-5 h-5" /></div>
                   <div className="bg-primary/5 rounded-2xl rounded-tr-none p-4 text-foreground border border-primary/20">
-                    Task created: <strong>Homepage Redesign</strong><br/>
-                    <span className="text-xs text-primary inline-block mt-2 bg-primary/10 px-2 py-1 rounded border border-primary/20">Priority: High</span> 
+                    Task created: <strong>Homepage Redesign</strong><br />
+                    <span className="text-xs text-primary inline-block mt-2 bg-primary/10 px-2 py-1 rounded border border-primary/20">Priority: High</span>
                     <span className="text-xs text-orange-500 inline-block mt-2 bg-orange-500/10 px-2 py-1 rounded border border-orange-500/20 ml-2">Due: Tomorrow 5 PM</span>
                   </div>
                 </div>
@@ -664,12 +665,12 @@ export default function HomePage() {
               ].map((item, idx) => (
                 <ScrollReveal key={idx} className="h-full" delay={item.delay}>
                   <div className="group h-full relative flex flex-col rounded-[2.5rem] bg-card p-6 md:p-8 shadow-sm transition-all duration-500 hover:-translate-y-3 hover:shadow-2xl border border-border">
-                    <div className="mb-6 flex h-10 px-4 items-center justify-between rounded-full bg-secondary w-full opacity-70 group-hover:opacity-100 transition-opacity">
+                    <div className="mb-6 flex h-10 w-full items-center justify-between rounded-full bg-secondary px-4 opacity-70 group-hover:opacity-100 transition-opacity">
                       <span className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">{item.tag}</span>
                     </div>
                     <h3 className="mb-4 text-2xl md:text-3xl font-bold tracking-tight text-foreground uppercase">{item.titleLine1}</h3>
                     <p className="mb-8 text-muted-foreground leading-relaxed">{item.desc}</p>
-                    
+
                     <div className="relative mt-auto aspect-[4/3] w-full overflow-hidden rounded-2xl bg-muted border border-border shadow-inner">
                       <Image
                         src={item.img}
@@ -700,10 +701,10 @@ export default function HomePage() {
               </h2>
               <div className="flex flex-wrap justify-center gap-3 md:gap-4 text-base md:text-lg text-muted-foreground mb-12 max-w-2xl mx-auto">
                 {["Advanced AI automation", "Admin controls", "Analytics & insights", "Team productivity boost"].map(ft => (
-                    <span key={ft} className="bg-muted px-4 py-2 rounded-full border border-border hover:border-primary/30 transition-colors cursor-default">{ft}</span>
+                  <span key={ft} className="bg-muted px-4 py-2 rounded-full border border-border hover:border-primary/30 transition-colors cursor-default">{ft}</span>
                 ))}
               </div>
-              
+
               <div className="flex flex-col items-center gap-4">
                 <Button asChild className="h-14 md:h-16 rounded-full bg-primary px-8 md:px-10 text-lg md:text-xl font-bold text-primary-foreground hover:opacity-90 hover:scale-105 transition-transform active:scale-95 shadow-md hover:shadow-xl">
                   <Link href="/signup">
