@@ -126,11 +126,13 @@ export function clearToken(): void {
 
 export class ApiError extends Error {
   status: number;
+  data?: unknown;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, data?: unknown) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.data = data;
   }
 }
 
@@ -171,7 +173,7 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
         typeof (data as { message: unknown }).message === "string"
         ? (data as { message: string }).message
         : "Request failed";
-    throw new ApiError(message, response.status);
+    throw new ApiError(message, response.status, data);
   }
 
   return data as T;

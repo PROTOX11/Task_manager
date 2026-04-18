@@ -12,7 +12,7 @@ interface AuthContextType {
   authenticateWithGoogle: (credential: string) => Promise<void>;
   signup: (data: SignupData) => Promise<void>;
   requestSignupOtp: (email: string) => Promise<void>;
-  verifySignupEmailOtp: (email: string, otp: string) => Promise<string>;
+  verifySignupEmailOtp: (email: string, otp: string) => Promise<{ verificationToken: string; trialAlreadyUsed: boolean }>;
   verifySignupOtp: (data: SignupData & { otp: string }) => Promise<void>;
   completeVerifiedSignup: (data: SignupData & { verificationToken: string }) => Promise<void>;
   signupAdmin: (data: AdminSignupData) => Promise<void>;
@@ -230,7 +230,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const verifySignupEmailOtp = async (email: string, otp: string) => {
-    const response = await apiRequest<{ message: string; verificationToken: string }>(
+    const response = await apiRequest<{ message: string; verificationToken: string; trialAlreadyUsed: boolean }>(
       "/auth/signup/verify-email-otp",
       {
         method: "POST",
@@ -239,7 +239,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     );
 
-    return response.verificationToken;
+    return { verificationToken: response.verificationToken, trialAlreadyUsed: response.trialAlreadyUsed };
   };
 
   const verifySignupOtp = async (data: SignupData & { otp: string }) => {

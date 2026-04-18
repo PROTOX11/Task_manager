@@ -28,7 +28,7 @@ export function PaywallPage() {
 
         <div className="mt-6 flex flex-col gap-3 sm:flex-row">
           <Button asChild className="gap-2">
-            <Link href="/signup/admin-payment">
+            <Link href="/signup">
               <Sparkles className="h-4 w-4" />
               Unlock access
             </Link>

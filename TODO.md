@@ -1,19 +1,19 @@
-# API Backend-Frontend Integration TODO
+# Task Manager Landing Page & Signup Enhancements
 
-## Current Status
+## Main Landing (/) - Completed Fixes [x]
 
-- [x] Backend server started (port 5000, DB connected assumed)
-- [ ] Frontend auth connected to /api/auth
-- [ ] Frontend data connected to /api/projects/tasks
-- [ ] Test full flow: login → create/fetch/save task
+- [x] Smooth sign in/up toggle animation
+- [x] BrandLogo top-left
+- [x] Nav buttons top-right
+- [x] Auth card width decreased
+- [x] Explore section unchanged
 
-## Steps
+## Signup Page (/signup) - New Task
 
-1. Update frontend/lib/auth-context.tsx - replace mock with real API calls to backend /api/auth/login/register
-2. Add token storage and getAuthHeaders helper
-3. Update frontend/lib/data-context.tsx - replace local state with API calls using auth headers
-4. Test login, create project/task, verify DB persistence
-5. Run frontend dev server if needed
-6. Verify end-to-end
+- [ ] Step 1: Redesign with big landing-card style (rounded, gradients, shadows like landing)
+- [ ] Step 2: Hero section with logo/features grid
+- [ ] Step 3: Form in styled card like landing auth
+- [ ] Step 4: Google modal matching style
+- [ ] Step 5: Test both pages
 
-Next step: Update auth-context.tsx
+Dev server running. Current progress: Landing fixed, planning signup redesign.

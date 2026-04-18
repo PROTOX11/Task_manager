@@ -1,4 +1,5 @@
 import User from '../models/User.js';
+import TrialAdmin from '../models/TrialAdmin.js';
 import AdminAccount from '../models/AdminAccount.js';
 import { generateToken } from '../middleware/auth.middleware.js';
 import mongoose from 'mongoose';
@@ -7,7 +8,7 @@ import Razorpay from 'razorpay';
 import SibApiV3Sdk from 'sib-api-v3-sdk';
 import { OAuth2Client } from 'google-auth-library';
 
-const ADMIN_PLAN_AMOUNT = Number(process.env.ADMIN_PLAN_AMOUNT || 499);
+const ADMIN_PLAN_AMOUNT = Number(process.env.ADMIN_PLAN_AMOUNT || 99);
 const OTP_EXPIRY_MS = 5 * 60 * 1000;
 const VERIFIED_SIGNUP_EXPIRY_MS = 15 * 60 * 1000;
 const otpStore = new Map();
@@ -46,6 +47,7 @@ const createAdminUserRecord = async ({
     email,
     password: password || crypto.randomBytes(24).toString('hex'),
     role: 'admin',
+    isPaidAdmin: true,
     avatar,
   });
 
@@ -399,8 +401,15 @@ export const verifySignupOtp = async (req, res) => {
       return;
     }
 
-    const { name, email, password, otp } = req.body;
+    const { name, email, password, otp, role } = req.body;
     const normalizedEmail = email.toLowerCase();
+
+    // Role must be explicitly provided — no silent defaulting
+    if (!role || !['developer', 'trial-admin'].includes(role)) {
+      return res.status(400).json({
+        message: 'Account type is required. Choose Developer or Trial Admin.',
+      });
+    }
 
     const existingUser = await User.findOne({ email: normalizedEmail });
     if (existingUser) {
@@ -412,16 +421,42 @@ export const verifySignupOtp = async (req, res) => {
       return res.status(400).json({ message: otpResult.reason });
     }
 
-    const user = new User({
+    let userFields = {
       name,
       email: normalizedEmail,
       password: password || crypto.randomBytes(24).toString('hex'),
       role: 'developer',
-    });
+    };
 
+    if (role === 'trial-admin') {
+      const trialUser = await TrialAdmin.findOne({ email: normalizedEmail });
+      if (trialUser) {
+        return res.status(400).json({
+          message: 'This email has already used the 30-minute free admin access.',
+          trialAlreadyUsed: true,
+          redirectTo: '/signup',
+        });
+      }
+      const trialExpiry = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes
+      const trialAdmin = new TrialAdmin({
+        ...userFields,
+        role: 'admin',
+        isTrialAdmin: true,
+        trialExpiresAt: trialExpiry,
+      });
+      await trialAdmin.save();
+      clearOTP(normalizedEmail);
+      const token = generateToken(trialAdmin._id);
+      return res.status(201).json({
+        message: 'User registered successfully',
+        token,
+        user: { id: trialAdmin._id, name: trialAdmin.name, email: trialAdmin.email, role: trialAdmin.role, isTrialAdmin: trialAdmin.isTrialAdmin, trialExpiresAt: trialAdmin.trialExpiresAt },
+      });
+    }
+
+    const user = new User(userFields);
     await user.save();
     clearOTP(normalizedEmail);
-
     const token = generateToken(user._id);
 
     res.status(201).json({
@@ -432,6 +467,8 @@ export const verifySignupOtp = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        isTrialAdmin: user.isTrialAdmin,
+        trialExpiresAt: user.trialExpiresAt,
       },
     });
   } catch (error) {
@@ -449,7 +486,14 @@ export const verifyLoginOtp = async (req, res) => {
     const { email, otp } = req.body;
     const normalizedEmail = email.toLowerCase();
 
-    const user = await User.findOne({ email: normalizedEmail });
+    let isTrial = false;
+    let user = await User.findOne({ email: normalizedEmail });
+    
+    if (!user) {
+      user = await TrialAdmin.findOne({ email: normalizedEmail });
+      if (user) isTrial = true;
+    }
+
     if (!user) {
       return res.status(404).json({ message: 'No account found with this email' });
     }
@@ -461,6 +505,18 @@ export const verifyLoginOtp = async (req, res) => {
 
     clearOTP(normalizedEmail);
 
+    // Trial admin expiry check
+    if (user.isTrialAdmin && user.trialExpiresAt) {
+      const now = new Date();
+      if (now > new Date(user.trialExpiresAt)) {
+        return res.status(403).json({
+          message: 'Your 30-minute admin trial has expired. Please complete payment to continue.',
+          trialExpired: true,
+          redirectTo: '/signup',
+        });
+      }
+    }
+
     const token = generateToken(user._id);
 
     res.json({
@@ -471,6 +527,8 @@ export const verifyLoginOtp = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        isTrialAdmin: user.isTrialAdmin || false,
+        trialExpiresAt: user.trialExpiresAt || null,
       },
     });
   } catch (error) {
@@ -493,6 +551,9 @@ export const verifySignupEmailOtp = async (req, res) => {
       return res.status(400).json({ message: 'User with this email already exists' });
     }
 
+    const existingTrial = await TrialAdmin.findOne({ email: normalizedEmail });
+    const trialAlreadyUsed = !!existingTrial;
+    
     const otpResult = verifyStoredOTP(normalizedEmail, otp);
     if (!otpResult.valid) {
       return res.status(400).json({ message: otpResult.reason });
@@ -504,6 +565,7 @@ export const verifySignupEmailOtp = async (req, res) => {
     res.json({
       message: 'Email verified successfully',
       verificationToken,
+      trialAlreadyUsed,
     });
   } catch (error) {
     console.error('Verify signup email OTP error:', error);
@@ -517,8 +579,15 @@ export const completeVerifiedSignup = async (req, res) => {
       return;
     }
 
-    const { name, email, password, verificationToken } = req.body;
+    const { name, email, password, verificationToken, role } = req.body;
     const normalizedEmail = email.toLowerCase();
+
+    // Role must be explicitly provided
+    if (!role || !['developer', 'trial-admin'].includes(role)) {
+      return res.status(400).json({
+        message: 'Account type is required. Choose Developer or Trial Admin.',
+      });
+    }
 
     const existingUser = await User.findOne({ email: normalizedEmail });
     if (existingUser) {
@@ -530,13 +599,40 @@ export const completeVerifiedSignup = async (req, res) => {
       return res.status(400).json({ message: verificationResult.reason });
     }
 
-    const user = new User({
+    let userFields = {
       name,
       email: normalizedEmail,
       password,
       role: 'developer',
-    });
+    };
 
+    if (role === 'trial-admin') {
+      const trialUser = await TrialAdmin.findOne({ email: normalizedEmail });
+      if (trialUser) {
+        return res.status(400).json({
+          message: 'This email has already used the 30-minute free admin access.',
+          trialAlreadyUsed: true,
+          redirectTo: '/signup',
+        });
+      }
+      const trialExpiry = new Date(Date.now() + 30 * 60 * 1000);
+      const trialAdmin = new TrialAdmin({
+        ...userFields,
+        role: 'admin',
+        isTrialAdmin: true,
+        trialExpiresAt: trialExpiry,
+      });
+      await trialAdmin.save();
+      clearVerifiedSignup(verificationToken);
+      const token = generateToken(trialAdmin._id);
+      return res.status(201).json({
+        message: 'User registered successfully',
+        token,
+        user: { id: trialAdmin._id, name: trialAdmin.name, email: trialAdmin.email, role: trialAdmin.role, isTrialAdmin: trialAdmin.isTrialAdmin, trialExpiresAt: trialAdmin.trialExpiresAt },
+      });
+    }
+
+    const user = new User(userFields);
     await user.save();
     clearVerifiedSignup(verificationToken);
 
@@ -550,6 +646,8 @@ export const completeVerifiedSignup = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        isTrialAdmin: user.isTrialAdmin,
+        trialExpiresAt: user.trialExpiresAt,
       },
     });
   } catch (error) {

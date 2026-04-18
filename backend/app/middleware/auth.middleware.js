@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
+import TrialAdmin from '../models/TrialAdmin.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
 
@@ -14,8 +15,10 @@ export const authenticate = async (req, res, next) => {
     const token = authHeader.split(' ')[1];
     
     const decoded = jwt.verify(token, JWT_SECRET);
-    
-    const user = await User.findById(decoded.userId).select('-password');
+    let user = await User.findById(decoded.userId).select('-password');
+    if (!user) {
+      user = await TrialAdmin.findById(decoded.userId).select('-password');
+    }
     
     if (!user) {
       return res.status(401).json({ message: 'User not found' });
@@ -39,6 +42,19 @@ export const authorizeAdmin = (req, res, next) => {
   if (req.user.role !== 'admin') {
     return res.status(403).json({ message: 'Access denied. Admin role required.' });
   }
+
+  // Check if trial admin has expired
+  if (req.user.isTrialAdmin && req.user.trialExpiresAt) {
+    const now = new Date();
+    if (now > new Date(req.user.trialExpiresAt)) {
+      return res.status(403).json({
+        message: 'Your 30-minute admin trial has expired. Please complete payment to continue.',
+        trialExpired: true,
+        redirectTo: '/signup',
+      });
+    }
+  }
+
   next();
 };
 

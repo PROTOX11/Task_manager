@@ -6,6 +6,9 @@ export interface User {
   role: 'admin' | 'developer';
   avatar?: string;
   createdAt: string;
+  isTrialAdmin?: boolean;
+  isPaidAdmin?: boolean;
+  trialExpiresAt?: string | null;
 }
 
 export interface Project {

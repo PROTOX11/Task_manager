@@ -12,8 +12,9 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Tickzen - Project & Task Management",
-  description: "A powerful project and task management application",
+  title: "TickZen - AI Project Management & Task Automation Tool",
+  description: "TickZen is an AI-powered project management platform that automates tasks, tracks progress, and boosts team productivity.",
+  keywords: "AI project management, task automation, productivity tool, workflow automation, kanban AI"
 };
 
 export default function RootLayout({
@@ -22,7 +23,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning className="scroll-smooth">
       <body className="font-sans antialiased">
         <AuthProvider>
           <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
