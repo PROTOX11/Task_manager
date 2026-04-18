@@ -289,6 +289,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         description: r.projectId?.description || "",
         status: "active" as const,
         owner: user,
+        admins: [],
         members: [],
         panels: [],
         createdAt: new Date().toISOString(),
