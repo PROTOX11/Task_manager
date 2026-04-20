@@ -21,6 +21,7 @@ export function ZentrixaAiRing({
   return (
     <div
       className={cn("zentrixa-ai-container", className)}
+      data-mode={mode || "idle"}
       style={
         {
           "--zentrixa-ai-size": `${size}px`,
@@ -30,7 +31,7 @@ export function ZentrixaAiRing({
       }
       aria-hidden="true"
     >
-      <div className="zentrixa-ai-center">Z</div>
+      <div className="zentrixa-ai-center" />
 
       <div
         className={cn("zentrixa-ai-ring zentrixa-ai-thinking", mode !== "thinking" && "hidden")}

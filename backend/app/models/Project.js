@@ -53,7 +53,12 @@ const projectSchema = new mongoose.Schema({
   completedTasks: {
     type: Number,
     default: 0
-  }
+  },
+  // Users who have starred this project (each user's preference is independent)
+  starredBy: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }]
 }, {
   timestamps: true
 });

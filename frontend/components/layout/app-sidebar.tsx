@@ -145,12 +145,15 @@ export function AppSidebar() {
                   >
                     <Link
                       href={`/projects/${project.id}`}
+                      className="group/link flex w-full items-center gap-2"
                       onClick={(event) =>
                         handleSidebarLinkClick(`/projects/${project.id}`, event)
                       }
                     >
-                      <FolderKanban className="h-4 w-4 max-[767px]:h-5 max-[767px]:w-5" />
-                      <span className="truncate max-[767px]:text-[1rem]">{project.name}</span>
+                      <FolderKanban className="h-4 w-4 text-muted-foreground transition-colors group-hover/link:text-primary max-[767px]:h-5 max-[767px]:w-5" />
+                      <span className="truncate font-medium text-foreground/80 transition-colors group-hover/link:text-foreground max-[767px]:text-[1rem]">
+                        {project.name}
+                      </span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

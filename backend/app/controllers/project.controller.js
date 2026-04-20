@@ -511,3 +511,36 @@ export const getProjectStats = async (req, res) => {
     res.status(500).json({ message: 'Error fetching project stats', error: error.message });
   }
 };
+
+// Toggle star on a project (any authenticated user who is a member or admin of the project)
+export const toggleStar = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.userId;
+
+    const project = await Project.findById(id);
+    if (!project) {
+      return res.status(404).json({ message: 'Project not found' });
+    }
+
+    const alreadyStarred = (project.starredBy || []).some(
+      (uid) => uid.toString() === userId.toString()
+    );
+
+    if (alreadyStarred) {
+      // Un-star
+      await Project.findByIdAndUpdate(id, { $pull: { starredBy: userId } });
+    } else {
+      // Star
+      await Project.findByIdAndUpdate(id, { $addToSet: { starredBy: userId } });
+    }
+
+    return res.json({
+      starred: !alreadyStarred,
+      message: alreadyStarred ? 'Project un-starred' : 'Project starred',
+    });
+  } catch (error) {
+    console.error('Toggle star error:', error);
+    res.status(500).json({ message: 'Error toggling star', error: error.message });
+  }
+};

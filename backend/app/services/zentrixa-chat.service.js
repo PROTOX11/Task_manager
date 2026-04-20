@@ -10,7 +10,7 @@ import { createProject, deleteProject, inviteDeveloper, removeProjectMember, upd
 import { createTask, updateTask, updateTaskStatus, addTaskComment } from '../controllers/task.controller.js';
 import { extractEntities } from '../utils/entityExtractor.js';
 
-const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
+const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
 const GENERAL_CHAT_PATTERNS = [
   /\b(hi|hello|hey|help|thanks|thank you|good morning|good afternoon|good evening)\b/i,
@@ -241,15 +241,16 @@ const buildCommandClassifierMessages = (user, text, context = {}) => ([
   {
     role: 'system',
     content: [
-      'You are Zentrixa, a command router for a project management assistant.',
-      'Classify the user message into one of the allowed intents or mark it as chat.',
-      'Return JSON only. No markdown, no prose outside JSON.',
-      'If the message is just small talk, encouragement, or a question unrelated to project actions, use mode "chat".',
-      'If the user asks for an action not in the allowed list, use mode "chat" and reply naturally that you can help with project commands.',
-      'If the user is replying to a previous clarification, use the pending command context to infer the next step.',
+      'You are Zentrixa, a brilliant proactive teammate. You help users manage projects and tasks.',
+      'Classify the user message into one of the allowed intents or "chat".',
+      'You MUST support multiple languages: English, Hindi (Devanagari script), and mixed Hinglish.',
+      'Return JSON only. No markdown.',
+      'If the user just chats (small talk, how are you, who are you), use mode "chat" and write a warm, natural reply.',
+      'If it is a project command (create project, add task, etc.), use mode "command".',
+      'For "command" mode, extract entities (task_name, project_name, etc.) and write a brief, helpful reply explaining what you are about to do.',
       `Allowed commands: ${COMMAND_DEFINITIONS.map((item) => `${item.intent}:${item.label}`).join(' | ')}`,
       'Required JSON shape:',
-      '{"mode":"chat|command","intent":"create_task|delete_task|assign_task|move_task|update_task|comment_task|show_delayed|create_project|delete_project|rename_project|analyze_project|add_member|remove_member|update_deadline|unknown","confidence":0,"reply":"human response","missing":[],"entities":{"project_name":"","task_name":"","user_name":"","status":"","deadline":"","new_name":"","description":"","comment":""},"pendingCommand":null}',
+      '{"mode":"chat|command","intent":"...","confidence":0.95,"reply":"Your human response here","entities":{"project_name":"","task_name":"","user_name":"","status":"","deadline":"","new_name":""},"missing":[],"pendingCommand":null}',
     ].join(' '),
   },
   {
@@ -288,7 +289,7 @@ const classifyZentrixaMessage = async ({ user, text, context = {} }) => {
   }
 
   try {
-    const response = await fetch('https://api.openai.com/v1/responses', {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -296,8 +297,9 @@ const classifyZentrixaMessage = async ({ user, text, context = {} }) => {
       },
       body: JSON.stringify({
         model: OPENAI_MODEL,
-        input: buildCommandClassifierMessages(user, text, context),
+        messages: buildCommandClassifierMessages(user, text, context),
         temperature: 0,
+        response_format: { type: 'json_object' }
       }),
     });
 
@@ -306,7 +308,7 @@ const classifyZentrixaMessage = async ({ user, text, context = {} }) => {
     }
 
     const data = await response.json();
-    const outputText = data.output_text || data.output?.[0]?.content?.[0]?.text || '';
+    const outputText = data.choices?.[0]?.message?.content || '';
     const parsed = parseJsonObject(outputText);
     if (!parsed || typeof parsed !== 'object') return null;
 
@@ -332,23 +334,21 @@ export async function getOpenAIChatReply({ user, text, context = {} }) {
     return fallback;
   }
 
-  const requestBody = JSON.stringify({
-    model: OPENAI_MODEL,
-    input: buildChatMessages(user, text, context),
-  });
-
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
 
     try {
-      const response = await fetch('https://api.openai.com/v1/responses', {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${apiKey}`,
         },
-        body: requestBody,
+        body: JSON.stringify({
+          model: OPENAI_MODEL,
+          messages: buildChatMessages(user, text, context),
+        }),
         signal: controller.signal,
       });
 
@@ -358,7 +358,7 @@ export async function getOpenAIChatReply({ user, text, context = {} }) {
       }
 
       const data = await response.json();
-      const textOutput = data.output_text || data.output?.[0]?.content?.[0]?.text || '';
+      const textOutput = data.choices?.[0]?.message?.content || '';
       return normalize(textOutput) || 'I’m here with you. Tell me what you need, and I’ll help however I can.';
     } catch (error) {
       if (attempt === 1) {
@@ -367,6 +367,17 @@ export async function getOpenAIChatReply({ user, text, context = {} }) {
     } finally {
       clearTimeout(timeout);
     }
+  }
+
+  const lowerText = text.toLowerCase();
+  if (lowerText.includes('day') && lowerText.includes('today')) {
+    return `Today is ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}.`;
+  }
+  if (lowerText.includes('time')) {
+    return `It is currently ${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}.`;
+  }
+  if (lowerText.match(/\b(hi|hello|hey)\b/)) {
+    return 'Hello! I am Zentrixa. How can I help you today?';
   }
 
   return 'I’m here with you. Tell me what you need, and I’ll help however I can.';
@@ -433,7 +444,7 @@ const extractProjectNameHint = (text = '') => {
     const match = normalized.match(pattern);
     if (match?.[1]) {
       return match[1]
-        .replace(/\b(project|task|board|card)\b/gi, '')
+        .replace(/\b(project|task|board|card|name\s+of|name|called|by\s+name\s+of|by\s+name|by)\b/gi, '')
         .replace(/\b(my|this|that|the|a|an)\b/gi, '')
         .trim();
     }

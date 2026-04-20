@@ -36,6 +36,8 @@ interface DataContextType {
   getTaskById: (id: string) => Task | undefined;
   getMyTasks: () => Task[];
   addAdminToProject: (projectId: string, adminId: string) => Promise<void>;
+  /** Toggle the current user's star on a project. Updates optimistically. */
+  toggleStarProject: (projectId: string) => Promise<void>;
 }
 
 interface CreateProjectData {
@@ -258,6 +260,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
           description: apiProject.description || "",
           githubRepository: apiProject.githubRepository || "",
           status: apiProject.status || "active",
+          // starred = true when the current user's id is in the starredBy array
+          starred: Array.isArray(apiProject.starredBy)
+            ? apiProject.starredBy.some((uid: string) => uid === user?.id || uid?.toString() === user?.id)
+            : false,
           owner,
           members,
           admins,
@@ -806,6 +812,27 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await loadProjects();
   };
 
+  /**
+   * Toggle star on a project for the current user.
+   * Optimistically flips `starred` in local state immediately,
+   * then confirms with the backend. Rolls back on error.
+   */
+  const toggleStarProject = async (projectId: string) => {
+    // Optimistic update
+    setProjects((prev) =>
+      prev.map((p) => (p.id === projectId ? { ...p, starred: !p.starred } : p))
+    );
+    try {
+      await apiRequest(`/projects/${projectId}/star`, { method: "PATCH" });
+    } catch (error) {
+      // Roll back on failure
+      setProjects((prev) =>
+        prev.map((p) => (p.id === projectId ? { ...p, starred: !p.starred } : p))
+      );
+      throw error;
+    }
+  };
+
   const getTaskById = (id: string): Task | undefined => {
     for (const project of projects) {
       for (const panel of project.panels) {
@@ -862,6 +889,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         getTaskById,
         getMyTasks,
         addAdminToProject,
+        toggleStarProject,
       }}
     >
       {children}

@@ -11,7 +11,8 @@ import {
   removeProjectMember,
   deleteProject,
   getProjectStats,
-  addAdminToProject
+  addAdminToProject,
+  toggleStar,
 } from '../controllers/project.controller.js';
 import { authenticate, authorizeAdmin } from '../middleware/auth.middleware.js';
 
@@ -55,6 +56,9 @@ router.delete('/:id/members/:memberId', authorizeAdmin, removeProjectMember);
 
 // Leave project (developer)
 router.post('/:id/leave', leaveProject);
+
+// Star / un-star a project (any authenticated member)
+router.patch('/:id/star', toggleStar);
 
 // Delete project (admin only)
 router.delete('/:id', authorizeAdmin, deleteProject);

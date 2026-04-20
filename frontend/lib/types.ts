@@ -17,6 +17,8 @@ export interface Project {
   description: string;
   githubRepository?: string;
   status: 'active' | 'completed' | 'archived' | 'starred';
+  /** True when the current user has starred this project */
+  starred: boolean;
   owner: User;
   members: ProjectMember[];
   admins: User[];

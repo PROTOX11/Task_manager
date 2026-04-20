@@ -25,6 +25,11 @@ import Project from '../models/Project.js';
 import Panel from '../models/Panel.js';
 import Task from '../models/Task.js';
 import User from '../models/User.js';
+import multer from 'multer';
+import { AssemblyAI } from 'assemblyai';
+import fs from 'fs';
+
+const upload = multer({ dest: 'uploads/' });
 
 const router = express.Router();
 
@@ -54,6 +59,38 @@ router.post('/message', handleZentrixaMessage);
 router.post('/confirm', handleZentrixaConfirm);
 router.get('/messages', getZentrixaMessages);
 router.delete('/notifications', clearZentrixaNotifications);
+
+router.post('/transcribe', upload.single('audio'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No audio file provided' });
+
+    const client = new AssemblyAI({
+      apiKey: process.env.ASSEMBLYAI_API_KEY
+    });
+
+    const filePath = req.file.path + '.webm';
+    fs.renameSync(req.file.path, filePath);
+
+    const transcript = await client.transcripts.transcribe({
+      audio: filePath,
+      speech_models: ["universal-2"]
+    });
+
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+
+    if (transcript.error) {
+      return res.status(500).json({ error: transcript.error });
+    }
+
+    return res.json({ text: transcript.text || "" });
+  } catch (error) {
+    console.error('Transcription error:', error);
+    const filePath = req.file ? req.file.path + '.webm' : null;
+    if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    return res.status(500).json({ error: error.message });
+  }
+});
 
 function createMockRes() {
   const state = {
@@ -787,6 +824,40 @@ router.post('/dispatch', async (req, res) => {
       error: error.message,
     });
   }
+});
+
+/**
+ * GET /zentrixa/actions
+ * Returns the canonical list of backend-supported actions.
+ * Used by the frontend voice-action system to validate intent matches.
+ */
+router.get('/actions', (_req, res) => {
+  res.json([
+    'create_project',
+    'delete_project',
+    'rename_project',
+    'analyze_project',
+    'create_task',
+    'delete_task',
+    'assign_task',
+    'move_task',
+    'update_task',
+    'comment_task',
+    'show_delayed',
+    'add_member',
+    'remove_member',
+    'update_deadline',
+    'create_panel',
+  ]);
+});
+
+/**
+ * POST /zentrixa/action
+ * Alias for /dispatch — used by the voice-action hook.
+ */
+router.post('/action', async (req, res, next) => {
+  req.url = '/dispatch';
+  next('route');
 });
 
 export default router;

@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { useVoiceRecognition } from "@/hooks/use-voice-recognition";
+import { useVoiceAction } from "@/hooks/use-voice-action";
 import { useAuth } from "@/lib/auth-context";
 import { useData } from "@/lib/data-context";
 import {
@@ -502,26 +503,75 @@ export function ZentrixaAssistant({ context }: { context?: ZentrixaContext }) {
     }
   };
 
-  const { supported, isListening, isMuted, error, micScale, startListening, stopListening, toggleMute } = useVoiceRecognition({
+  const { processTranscript, reset: resetVoiceAction } = useVoiceAction({
+    context: activeProject as Record<string, unknown>,
+    debounceMs: 300,
+    onActionExecuted: (result) => {
+      // Voice command executed → brief toast, no chatbot bubble
+      setAiMode(null);
+      voiceSessionRef.current = false;
+      pendingResponseRef.current = false;
+      setLoading(false);
+      setIsThinking(false);
+      playZentrixaReplyCue();
+      toast.success(result.message, { duration: 4000 });
+      // Restart listening for continuous voice session
+      if (voiceSessionRef.current) {
+        window.setTimeout(() => {
+          try { startListeningRef.current?.(); } catch { /* ignore */ }
+        }, 600);
+      }
+    },
+    onFallback: (result) => {
+      // Non-command voice → show AI reply in message list
+      setAiMode(null);
+      pendingResponseRef.current = false;
+      setLoading(false);
+      setIsThinking(false);
+      playZentrixaReplyCue();
+      postAssistantMessage(result.message);
+      if (voiceSessionRef.current) speakReply(result.message);
+    },
+    onError: (msg) => {
+      pendingResponseRef.current = false;
+      voiceSessionRef.current = false;
+      setLoading(false);
+      setIsThinking(false);
+      setAiMode(null);
+      toast.error(msg);
+    },
+  });
+
+  const { supported, isListening, isProcessing, isMuted, error, micScale, startListening, stopListening, toggleMute } = useVoiceRecognition({
     onStart: () => {
       setAiMode("listening");
       playZentrixaListeningCue();
     },
     onEnd: () => {
+      // Recording stopped but transcription still running → switch ring to thinking
       playZentrixaThinkingCue();
       setAiMode("thinking");
     },
     onError: (message) => {
       pendingResponseRef.current = false;
       voiceSessionRef.current = false;
+      resetVoiceAction();
       setAiMode(null);
+      setIsThinking(false);
+      setLoading(false);
       if (process.env.NODE_ENV !== "production") {
         console.debug("[Zentrixa voice]", message);
       }
     },
-    onFinalResult: async (text) => {
+    onFinalResult: (text) => {
+      // Voice path → strict action system (NOT handleSend / chatbot)
       setInput(text);
-      await handleSend(text);
+      setIsThinking(true);
+      setLoading(true);
+      pendingResponseRef.current = true;
+      // Show what was heard as a user bubble
+      setMessages((current) => [...current, { role: "user", content: text }]);
+      processTranscript(text);
     },
   });
 
@@ -561,10 +611,10 @@ export function ZentrixaAssistant({ context }: { context?: ZentrixaContext }) {
   useEffect(() => {
     if (!open) return;
     const id = window.requestAnimationFrame(() => {
-      endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+      endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
     });
     return () => window.cancelAnimationFrame(id);
-  }, [messages, isThinking, open, pendingCommand, pendingConfirmation]);
+  }, [messages, isThinking, open, pendingCommand, pendingConfirmation, aiMode]);
 
   const quickFill = (value: string) => {
     setInput(value);
@@ -601,15 +651,19 @@ export function ZentrixaAssistant({ context }: { context?: ZentrixaContext }) {
     setAiMode(null);
   };
 
-  const showAiRingInChat = Boolean(aiMode || isThinking);
-  const chatRingMode = aiMode || (isThinking ? "thinking" : null);
+  // Show the animated AI ring when:
+  //   - microphone is actively recording (isListening)
+  //   - OR audio is being transcribed (isProcessing)
+  // Hide it the moment neither is true (chat mode shows message list)
+  const showAiRingInChat = voiceSessionRef.current && (isListening || isProcessing);
+  const chatRingMode = isListening ? "listening" : "thinking";
 
   return (
     <div ref={shellRef} className="fixed bottom-4 right-4 z-50 sm:bottom-6 sm:right-6">
       {mounted && (
         <Card
           data-state={open && panelVisible ? "open" : "closed"}
-          className="zentrixa-panel absolute bottom-16 right-0 mb-3 flex h-[min(70vh,calc(100dvh-5.5rem))] w-[calc(100vw-1rem)] overflow-hidden border-border/70 bg-card/95 shadow-2xl backdrop-blur-xl transform-gpu will-change-transform sm:w-[380px]"
+          className="zentrixa-panel absolute bottom-16 right-0 mb-3 flex h-[min(70vh,calc(100dvh-5.5rem))] w-[calc(100vw-1rem)] overflow-hidden rounded-[2rem] border border-white/20 bg-card/90 shadow-[0_20px_50px_rgba(0,0,0,0.3)] backdrop-blur-2xl transform-gpu will-change-transform sm:w-[400px]"
         >
           <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-4">
             <div className="flex shrink-0 items-center justify-between border-b border-border/70 pb-3">
@@ -619,17 +673,22 @@ export function ZentrixaAssistant({ context }: { context?: ZentrixaContext }) {
                   size={64}
                 />
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2 text-sm font-semibold">
-                    Zentrixa
-                    <Sparkles className="h-3.5 w-3.5 text-primary" />
+                  <div className="flex items-center gap-1.5">
+                    <h3 className="text-sm font-bold tracking-tight text-foreground/90">Zentrixa</h3>
+                    <Sparkles className="h-3.5 w-3.5 text-primary/80" />
                   </div>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {activeProject.projectName ? `${activeProject.projectName} is in focus.` : "I’m ready to help."}
+                  <p className="text-[10px] font-medium text-muted-foreground/80">
+                    {isThinking ? "Composing reply..." : loading ? "Processing..." : "Seamlessly active"}
                   </p>
                 </div>
               </div>
-              <Button variant="ghost" size="icon" onClick={() => setOpen(false)} aria-label="Close Zentrixa">
-                <X className="h-4 w-4" />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 rounded-full transition-colors hover:bg-muted/50"
+                onClick={() => setOpen(false)}
+              >
+                <X className="h-4 w-4 opacity-60" />
               </Button>
             </div>
 
@@ -639,8 +698,8 @@ export function ZentrixaAssistant({ context }: { context?: ZentrixaContext }) {
                   key={command}
                   type="button"
                   size="sm"
-                  variant="secondary"
-                  className="rounded-full"
+                  variant="outline"
+                  className="h-7 rounded-full border-border/50 bg-background/50 px-3 text-[10px] font-medium transition-all hover:bg-background hover:shadow-sm"
                   onClick={() => quickFill(command)}
                 >
                   {command}
@@ -663,47 +722,51 @@ export function ZentrixaAssistant({ context }: { context?: ZentrixaContext }) {
                   {messages.map((message, index) => (
                     <div
                       key={`${message.role}-${index}`}
-                      className={cn("flex items-end gap-2", message.role === "user" ? "justify-end" : "justify-start")}
+                      className={cn("flex flex-col gap-1", message.role === "user" ? "items-end" : "items-start")}
                     >
+                      <div className={cn("flex items-end gap-2", message.role === "user" ? "flex-row-reverse" : "flex-row")}>
                       {message.role === "assistant" && (
-                        <Avatar className="h-7 w-7 shrink-0">
-                          <AvatarFallback className="text-[10px]">ZX</AvatarFallback>
+                        <Avatar className="h-7 w-7 shrink-0 border border-border/50">
+                          <AvatarFallback className="text-[10px] bg-primary/10 text-primary">ZX</AvatarFallback>
                         </Avatar>
                       )}
                       <div
                         className={cn(
-                          "max-w-[82%] rounded-2xl px-3 py-2 text-sm leading-relaxed",
-                          message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
+                          "max-w-[85%] rounded-2xl px-4 py-2.5 text-sm font-medium leading-relaxed shadow-sm",
+                          message.role === "user" 
+                            ? "bg-primary text-primary-foreground rounded-tr-none" 
+                            : "bg-muted/50 text-foreground rounded-tl-none border border-border/50 backdrop-blur-sm"
                         )}
                       >
                         {message.content}
                       </div>
                       {message.role === "user" && (
-                        <Avatar className="h-7 w-7 shrink-0">
-                          <AvatarFallback className="text-[10px]">
+                        <Avatar className="h-7 w-7 shrink-0 border border-border/50">
+                          <AvatarFallback className="text-[10px] bg-muted">
                             {user?.firstName?.charAt(0) || "Y"}
                             {user?.lastName?.charAt(0) || "U"}
                           </AvatarFallback>
                         </Avatar>
                       )}
                     </div>
+                  </div>
                   ))}
 
                   {isThinking && (
                     <div className="flex items-end gap-2">
-                      <Avatar className="h-7 w-7 shrink-0">
-                        <AvatarFallback className="text-[10px]">ZX</AvatarFallback>
+                      <Avatar className="h-7 w-7 shrink-0 border border-border/50">
+                        <AvatarFallback className="text-[10px] bg-primary/10 text-primary">ZX</AvatarFallback>
                       </Avatar>
-                      <div className="max-w-[82%] rounded-2xl bg-muted text-foreground">
+                      <div className="max-w-[82%] rounded-2xl bg-muted/50 border border-border/50 text-foreground">
                         <ZentrixaTypingDots />
                       </div>
                     </div>
                   )}
 
                   {pendingConfirmation && (
-                    <div className="w-full max-w-[310px] rounded-2xl border border-primary/25 bg-primary/8 p-2.5 text-xs shadow-sm">
+                    <div className="w-full max-w-[310px] rounded-2xl border border-primary/25 bg-primary/5 p-3 text-xs shadow-sm">
                       <div className="flex items-center justify-between gap-2">
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground/90">
+                        <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-primary">
                           Confirm
                         </div>
                         {String(pendingConfirmation.command || "").toUpperCase() === "CREATE_TASK" && (
@@ -914,19 +977,22 @@ export function ZentrixaAssistant({ context }: { context?: ZentrixaContext }) {
 
             <div className="mt-3 shrink-0 space-y-3">
               <div className="flex items-center gap-2">
-                <Input
-                  ref={inputRef}
-                  value={input}
-                  onChange={(event) => setInput(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      void handleSend(input);
-                    }
-                  }}
-                  placeholder={pendingConfirmation ? "Reply yes to confirm or cancel" : "Try: assign task login page to John"}
-                  className="h-11 rounded-2xl"
-                />
+                <div className="flex flex-1 items-center gap-1.5 rounded-2xl border border-border/40 bg-background/40 px-3 py-1 focus-within:border-primary/30 focus-within:bg-background/60 transition-all shadow-inner">
+                  <Input
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    placeholder="Ask anything..."
+                    className="h-8 border-0 bg-transparent p-0 text-sm focus-visible:ring-0"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        handleSend(input);
+                      }
+                    }}
+                  />
+                  <div className="flex items-center border-l border-border/30 pl-1.5 ml-1.5 italic text-[10px] text-muted-foreground/60 select-none">
+                    Enter
+                  </div>
+                </div>
                 <Button
                   type="button"
                   size="icon"
