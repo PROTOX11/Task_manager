@@ -456,6 +456,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       admins: [],
       members: [{ user: user!, role: "owner", joinedAt: new Date().toISOString() }],
       panels: [],
+      starred: false,
       createdAt: response.project.createdAt || new Date().toISOString(),
       updatedAt: response.project.updatedAt || new Date().toISOString(),
     };
