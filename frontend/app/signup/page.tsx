@@ -12,6 +12,7 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { toast } from "sonner";
 import { CheckCircle2, CheckSquare, Clock, Code2, Loader2, ShieldCheck, Sparkles } from "lucide-react";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
+import { GlobalFooter } from "@/components/layout/global-footer";
 
 const ADMIN_PLAN_AMOUNT = 99;
 
@@ -331,162 +332,164 @@ function SignupPageContent() {
   };
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center bg-muted/30 p-4 sm:p-6 lg:p-8">
-      {/* Theme toggle — icon only */}
-      <div className="absolute right-4 top-4 sm:right-6 sm:top-6">
-        <ThemeToggle />
-      </div>
-
-      <div className="w-full max-w-5xl">
-        {/* Header */}
-        <div className="mb-6 text-center lg:mb-8">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary shadow-lg shadow-primary/20">
-            <CheckSquare className="h-7 w-7 text-primary-foreground" />
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Choose Your Account</h1>
-          <p className="mt-2 text-muted-foreground">
-            {isEmailVerified ? (
-              <>
-                <CheckCircle2 className="mr-1.5 inline h-4 w-4 text-emerald-500" />
-                <span className="font-medium text-foreground">{email}</span> verified — now pick your plan
-              </>
-            ) : (
-              "Select a plan to get started with Tickzen"
-            )}
-          </p>
+    <div className="flex min-h-screen flex-col bg-muted/30">
+      <div className="relative flex flex-1 flex-col items-center justify-center gap-8 p-4 sm:p-6 lg:p-8">
+        {/* Theme toggle — icon only */}
+        <div className="absolute right-4 top-4 sm:right-6 sm:top-6">
+          <ThemeToggle />
         </div>
 
-        {/* Role Cards */}
-        <div className="mb-6 grid gap-4 sm:grid-cols-3 lg:mb-8">
-          {/* Developer */}
-          <div
-            role="button"
-            tabIndex={0}
-            className={`group relative flex cursor-pointer flex-col rounded-2xl border-2 p-5 transition-all duration-200 hover:shadow-md sm:p-6 ${
-              role === "developer"
-                ? "border-blue-500 bg-blue-50/60 shadow-md shadow-blue-500/10 ring-1 ring-blue-500/30 dark:bg-blue-500/10"
-                : "border-border bg-card hover:border-blue-400/50"
-            }`}
-            onClick={() => setRole("developer")}
-          >
-            <div className="mb-3 flex items-center gap-3">
-              <div className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors ${role === "developer" ? "bg-blue-500 text-white" : "bg-blue-100 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400"}`}>
-                <Code2 className="h-5 w-5" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-foreground">Developer</h3>
-                <p className="text-lg font-bold text-blue-600 dark:text-blue-400">Free</p>
-              </div>
+        <div className="w-full max-w-5xl">
+          {/* Header */}
+          <div className="mb-6 text-center lg:mb-8">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary shadow-lg shadow-primary/20">
+              <CheckSquare className="h-7 w-7 text-primary-foreground" />
             </div>
-            <ul className="mt-auto space-y-1.5 text-xs text-muted-foreground">
-              {DEVELOPER_FEATURES.map((f) => (
-                <li key={f} className="flex items-start gap-1.5">
-                  <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-blue-500" />
-                  <span>{f}</span>
-                </li>
-              ))}
-            </ul>
-            {role === "developer" && (
-              <div className="absolute right-3 top-3">
-                <CheckCircle2 className="h-5 w-5 text-blue-500" />
-              </div>
-            )}
+            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Choose Your Account</h1>
+            <p className="mt-2 text-muted-foreground">
+              {isEmailVerified ? (
+                <>
+                  <CheckCircle2 className="mr-1.5 inline h-4 w-4 text-emerald-500" />
+                  <span className="font-medium text-foreground">{email}</span> verified — now pick your plan
+                </>
+              ) : (
+                "Select a plan to get started with Tickzen"
+              )}
+            </p>
           </div>
 
-          {/* Paid Admin */}
-          <div
-            role="button"
-            tabIndex={0}
-            className={`group relative flex cursor-pointer flex-col rounded-2xl border-2 p-5 transition-all duration-200 hover:shadow-md sm:p-6 ${
-              role === "admin"
-                ? "border-amber-500 bg-amber-50/60 shadow-md shadow-amber-500/10 ring-1 ring-amber-500/30 dark:bg-amber-500/10"
-                : "border-border bg-card hover:border-amber-400/50"
-            }`}
-            onClick={() => setRole("admin")}
-          >
-            <div className="absolute -right-1 -top-1 rounded-bl-xl rounded-tr-2xl bg-gradient-to-r from-amber-500 to-orange-500 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white">
-              Popular
+          {/* Role Cards */}
+          <div className="mb-6 grid gap-4 sm:grid-cols-3 lg:mb-8">
+            {/* Developer */}
+            <div
+              role="button"
+              tabIndex={0}
+              className={`group relative flex cursor-pointer flex-col rounded-2xl border-2 p-5 transition-all duration-200 hover:shadow-md sm:p-6 ${
+                role === "developer"
+                  ? "border-blue-500 bg-blue-50/60 shadow-md shadow-blue-500/10 ring-1 ring-blue-500/30 dark:bg-blue-500/10"
+                  : "border-border bg-card hover:border-blue-400/50"
+              }`}
+              onClick={() => setRole("developer")}
+            >
+              <div className="mb-3 flex items-center gap-3">
+                <div className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors ${role === "developer" ? "bg-blue-500 text-white" : "bg-blue-100 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400"}`}>
+                  <Code2 className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-foreground">Developer</h3>
+                  <p className="text-lg font-bold text-blue-600 dark:text-blue-400">Free</p>
+                </div>
+              </div>
+              <ul className="mt-auto space-y-1.5 text-xs text-muted-foreground">
+                {DEVELOPER_FEATURES.map((f) => (
+                  <li key={f} className="flex items-start gap-1.5">
+                    <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-blue-500" />
+                    <span>{f}</span>
+                  </li>
+                ))}
+              </ul>
+              {role === "developer" && (
+                <div className="absolute right-3 top-3">
+                  <CheckCircle2 className="h-5 w-5 text-blue-500" />
+                </div>
+              )}
             </div>
-            <div className="mb-3 flex items-center gap-3">
-              <div className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors ${role === "admin" ? "bg-amber-500 text-white" : "bg-amber-100 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400"}`}>
-                <ShieldCheck className="h-5 w-5" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-foreground">Paid Admin</h3>
-                <p className="text-lg font-bold text-amber-600 dark:text-amber-400">₹{ADMIN_PLAN_AMOUNT}</p>
-              </div>
-            </div>
-            <ul className="mt-auto space-y-1.5 text-xs text-muted-foreground">
-              {ADMIN_FEATURES.slice(0, 4).map((f) => (
-                <li key={f} className="flex items-start gap-1.5">
-                  <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-amber-500" />
-                  <span>{f}</span>
-                </li>
-              ))}
-              <li className="text-xs font-medium text-amber-600 dark:text-amber-400">+ {ADMIN_FEATURES.length - 4} more features</li>
-            </ul>
-            {role === "admin" && (
-              <div className="absolute right-3 top-8">
-                <CheckCircle2 className="h-5 w-5 text-amber-500" />
-              </div>
-            )}
-          </div>
 
-          {/* Trial Admin */}
-          <div
-            role={trialAlreadyUsed ? "presentation" : "button"}
-            tabIndex={trialAlreadyUsed ? -1 : 0}
-            className={`group relative flex flex-col rounded-2xl border-2 p-5 transition-all duration-200 sm:p-6 ${
-              trialAlreadyUsed 
-                ? "cursor-not-allowed border-border/50 bg-muted/40 opacity-50 grayscale select-none"
-                : `cursor-pointer hover:shadow-md ${
-                    role === "trial-admin"
-                      ? "border-teal-500 bg-teal-50/60 shadow-md shadow-teal-500/10 ring-1 ring-teal-500/30 dark:bg-teal-500/10"
-                      : "border-border bg-card hover:border-teal-400/50"
-                  }`
-            }`}
-            onClick={() => {
-              if (trialAlreadyUsed) {
-                toast.error("You have already used your 30-minute admin trial.");
-                return;
-              }
-              setRole("trial-admin");
-            }}
-          >
-            <div className="mb-3 flex items-center gap-3">
-              <div className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors ${role === "trial-admin" && !trialAlreadyUsed ? "bg-teal-500 text-white" : "bg-teal-100 text-teal-600 dark:bg-teal-500/20 dark:text-teal-400"}`}>
-                <Clock className="h-5 w-5" />
+            {/* Paid Admin */}
+            <div
+              role="button"
+              tabIndex={0}
+              className={`group relative flex cursor-pointer flex-col rounded-2xl border-2 p-5 transition-all duration-200 hover:shadow-md sm:p-6 ${
+                role === "admin"
+                  ? "border-amber-500 bg-amber-50/60 shadow-md shadow-amber-500/10 ring-1 ring-amber-500/30 dark:bg-amber-500/10"
+                  : "border-border bg-card hover:border-amber-400/50"
+              }`}
+              onClick={() => setRole("admin")}
+            >
+              <div className="absolute -right-1 -top-1 rounded-bl-xl rounded-tr-2xl bg-gradient-to-r from-amber-500 to-orange-500 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white">
+                Popular
               </div>
-              <div>
-                <h3 className="font-semibold text-foreground">Trial Admin</h3>
-                <p className="text-lg font-bold text-teal-600 dark:text-teal-400">
-                  {trialAlreadyUsed ? "Trial Used" : "30 min free"}
-                </p>
+              <div className="mb-3 flex items-center gap-3">
+                <div className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors ${role === "admin" ? "bg-amber-500 text-white" : "bg-amber-100 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400"}`}>
+                  <ShieldCheck className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-foreground">Paid Admin</h3>
+                  <p className="text-lg font-bold text-amber-600 dark:text-amber-400">₹{ADMIN_PLAN_AMOUNT} <span className="text-xs font-medium text-muted-foreground">/ 3 Months</span></p>
+                  <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">One-time · non-recurring · 90 days access</p>
+                </div>
               </div>
+              <ul className="mt-auto space-y-1.5 text-xs text-muted-foreground">
+                {ADMIN_FEATURES.slice(0, 4).map((f) => (
+                  <li key={f} className="flex items-start gap-1.5">
+                    <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-amber-500" />
+                    <span>{f}</span>
+                  </li>
+                ))}
+                <li className="text-xs font-medium text-amber-600 dark:text-amber-400">+ {ADMIN_FEATURES.length - 4} more features</li>
+              </ul>
+              {role === "admin" && (
+                <div className="absolute right-3 top-8">
+                  <CheckCircle2 className="h-5 w-5 text-amber-500" />
+                </div>
+              )}
             </div>
-            <ul className="mt-auto space-y-1.5 text-xs text-muted-foreground">
-              <li className="flex items-start gap-1.5">
-                <Sparkles className="mt-0.5 h-3 w-3 shrink-0 text-teal-500" />
-                <span>Full admin access for 30 minutes</span>
-              </li>
-              <li className="flex items-start gap-1.5">
-                <Sparkles className="mt-0.5 h-3 w-3 shrink-0 text-teal-500" />
-                <span>No payment needed to try</span>
-              </li>
-              <li className="flex items-start gap-1.5">
-                <Sparkles className="mt-0.5 h-3 w-3 shrink-0 text-teal-500" />
-                <span>Upgrade anytime to keep access</span>
-              </li>
-            </ul>
-            {role === "trial-admin" && (
-              <div className="absolute right-3 top-3">
-                <CheckCircle2 className="h-5 w-5 text-teal-500" />
+
+            {/* Trial Admin */}
+            <div
+              role={trialAlreadyUsed ? "presentation" : "button"}
+              tabIndex={trialAlreadyUsed ? -1 : 0}
+              className={`group relative flex flex-col rounded-2xl border-2 p-5 transition-all duration-200 sm:p-6 ${
+                trialAlreadyUsed 
+                  ? "cursor-not-allowed border-border/50 bg-muted/40 opacity-50 grayscale select-none"
+                  : `cursor-pointer hover:shadow-md ${
+                      role === "trial-admin"
+                        ? "border-teal-500 bg-teal-50/60 shadow-md shadow-teal-500/10 ring-1 ring-teal-500/30 dark:bg-teal-500/10"
+                        : "border-border bg-card hover:border-teal-400/50"
+                    }`
+              }`}
+              onClick={() => {
+                if (trialAlreadyUsed) {
+                  toast.error("You have already used your 30-minute admin trial.");
+                  return;
+                }
+                setRole("trial-admin");
+              }}
+            >
+              <div className="mb-3 flex items-center gap-3">
+                <div className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors ${role === "trial-admin" && !trialAlreadyUsed ? "bg-teal-500 text-white" : "bg-teal-100 text-teal-600 dark:bg-teal-500/20 dark:text-teal-400"}`}>
+                  <Clock className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-foreground">Trial Admin</h3>
+                  <p className="text-lg font-bold text-teal-600 dark:text-teal-400">
+                    {trialAlreadyUsed ? "Trial Used" : "30 min free"}
+                  </p>
+                </div>
               </div>
-            )}
+              <ul className="mt-auto space-y-1.5 text-xs text-muted-foreground">
+                <li className="flex items-start gap-1.5">
+                  <Sparkles className="mt-0.5 h-3 w-3 shrink-0 text-teal-500" />
+                  <span>Full admin access for 30 minutes</span>
+                </li>
+                <li className="flex items-start gap-1.5">
+                  <Sparkles className="mt-0.5 h-3 w-3 shrink-0 text-teal-500" />
+                  <span>No payment needed to try</span>
+                </li>
+                <li className="flex items-start gap-1.5">
+                  <Sparkles className="mt-0.5 h-3 w-3 shrink-0 text-teal-500" />
+                  <span>Upgrade anytime to keep access</span>
+                </li>
+              </ul>
+              {role === "trial-admin" && (
+                <div className="absolute right-3 top-3">
+                  <CheckCircle2 className="h-5 w-5 text-teal-500" />
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Form */}
         <Card className="mx-auto w-full max-w-lg">
           <form onSubmit={handleSubmit}>
             <CardContent className="space-y-4 pt-6">
@@ -602,7 +605,17 @@ function SignupPageContent() {
             </CardFooter>
           </form>
         </Card>
+
+        {/* Policy links */}
+        <p className="mt-6 text-center text-xs text-muted-foreground">
+          By creating an account you agree to our{" "}
+          <Link href="/terms-and-conditions" className="text-primary hover:underline">Terms &amp; Conditions</Link>
+          {" "}&amp;{" "}
+          <Link href="/privacy-policy" className="text-primary hover:underline">Privacy Policy</Link>.
+        </p>
       </div>
+
+      <GlobalFooter />
     </div>
   );
 }

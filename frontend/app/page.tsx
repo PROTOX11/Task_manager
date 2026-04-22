@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { GlobalFooter } from "@/components/layout/global-footer";
 import Image from "next/image";
 import { GoogleAuthButton } from "@/components/google-auth-button";
 import { useAuth } from "@/lib/auth-context";
@@ -331,23 +332,34 @@ export default function HomePage() {
 
               {/* Desktop Nav Actions */}
               <div className="hidden md:flex flex-wrap w-full items-center justify-end gap-2 lg:w-auto lg:gap-3">
-                {["Dashboards", "Features", "Pricing", "Admin Workspace"].map((item, idx) => (
-                  <a key={item} href={`#${item.toLowerCase().replace(" ", "-")}`} className="group h-10 flex flex-col justify-center shrink-0">
-                    <div
-                      className={`transition-all duration-[800ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] ${navReady ? "translate-y-0 opacity-100 scale-100" : "-translate-y-16 opacity-0 scale-50"}`}
-                      style={{ transitionDelay: `${idx * 100}ms` }}
+                {["Dashboards", "Features", "Pricing", "Admin Workspace"].map((item, idx) => {
+                  const targetId = item.toLowerCase().replace(" ", "-");
+                  return (
+                    <a 
+                      key={item} 
+                      href={`#${targetId}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth" });
+                      }}
+                      className="group h-10 flex flex-col justify-center shrink-0"
                     >
                       <div
-                        className="flex overflow-hidden relative rounded-full bg-secondary text-sm font-medium text-secondary-foreground hover:bg-secondary/80 transition-all duration-[600ms] ease-out hover:scale-105"
-                        style={{ width: navReady ? (item.length * 8 + 48) + 'px' : '40px', height: '40px', transitionDelay: navReady ? `${idx * 150 + 200}ms` : '0ms' }}
+                        className={`transition-all duration-[800ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] ${navReady ? "translate-y-0 opacity-100 scale-100" : "-translate-y-16 opacity-0 scale-50"}`}
+                        style={{ transitionDelay: `${idx * 100}ms` }}
                       >
-                        <span className="absolute inset-0 flex items-center justify-center whitespace-nowrap transition-opacity duration-[400ms]" style={{ opacity: navReady ? 1 : 0, transitionDelay: navReady ? `${idx * 150 + 500}ms` : '0ms' }}>
-                          {item}
-                        </span>
+                        <div
+                          className="flex overflow-hidden relative rounded-full bg-secondary text-sm font-medium text-secondary-foreground hover:bg-secondary/80 transition-all duration-[600ms] ease-out hover:scale-105"
+                          style={{ width: navReady ? (item.length * 8 + 48) + 'px' : '40px', height: '40px', transitionDelay: navReady ? `${idx * 150 + 200}ms` : '0ms' }}
+                        >
+                          <span className="absolute inset-0 flex items-center justify-center whitespace-nowrap transition-opacity duration-[400ms]" style={{ opacity: navReady ? 1 : 0, transitionDelay: navReady ? `${idx * 150 + 500}ms` : '0ms' }}>
+                            {item}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  </a>
-                ))}
+                    </a>
+                  );
+                })}
 
                 {mounted && (
                   <button
@@ -362,11 +374,24 @@ export default function HomePage() {
 
               {/* Mobile explicitly compact nav */}
               <div className="md:hidden flex flex-wrap justify-end gap-1.5 sm:gap-2 items-center w-full max-w-[85%]">
-                {["Dashboards", "Features", "Admin"].map((item) => (
-                  <a key={item} href={`#${item.toLowerCase().replace(" ", "-")}`} className="rounded-full bg-secondary px-3 sm:px-4.5 py-[6px] text-[13px] sm:text-[15px] font-semibold text-secondary-foreground whitespace-nowrap">
-                    {item}
-                  </a>
-                ))}
+                {["Dashboards", "Features", "Admin"].map((item) => {
+                  const targetId = item.toLowerCase().replace(" ", "-");
+                  return (
+                    <a 
+                      key={item} 
+                      href={`#${targetId}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        // For 'admin', target might be 'admin-workspace' if it matches the desktop section, but here they just typed Admin.
+                        const trueTargetId = targetId === "admin" ? "admin-workspace" : targetId;
+                        document.getElementById(trueTargetId)?.scrollIntoView({ behavior: "smooth" });
+                      }}
+                      className="rounded-full bg-secondary px-3 sm:px-4.5 py-[6px] text-[13px] sm:text-[15px] font-semibold text-secondary-foreground whitespace-nowrap"
+                    >
+                      {item}
+                    </a>
+                  );
+                })}
                 {mounted && (
                   <button
                     onClick={toggleTheme}
@@ -394,10 +419,22 @@ export default function HomePage() {
                 </p>
                 <div className="mt-10 flex flex-wrap items-center gap-4">
                   <Button asChild className="h-14 rounded-full px-8 text-lg font-medium shadow-lg hover:-translate-y-1 hover:shadow-xl transition-all active:scale-95">
-                    <a href="#premium">Start Free</a>
+                    <a 
+                      href="#pricing"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        document.getElementById("pricing")?.scrollIntoView({ behavior: "smooth" });
+                      }}
+                    >Start Free</a>
                   </Button>
                   <Button asChild variant="outline" className="h-14 rounded-full border-2 border-primary text-primary px-8 text-lg font-medium hover:bg-primary/5 transition-colors bg-transparent active:scale-95">
-                    <a href="#features">Explore Features</a>
+                    <a 
+                      href="#features"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        document.getElementById("features")?.scrollIntoView({ behavior: "smooth" });
+                      }}
+                    >Explore Features</a>
                   </Button>
                 </div>
                 <p className="mt-6 text-sm font-medium text-muted-foreground block">
@@ -536,7 +573,7 @@ export default function HomePage() {
                 Zentrixa understands your commands, creates tasks automatically, tracks deadlines, and alerts you before things go wrong. Stop manually doing what AI can do for you.
               </p>
               <ul className="space-y-4">
-                {["Turn voice or text into tasks instantly", "Smart deadline tracking", "Real-time alerts and suggestions", "Works like a team member, not just a tool"].map((pt, i) => (
+                {["Turn voice or text into tasks instantly", "Smart deadline tracking", "Real-time alerts and suggestions", "Interactive AI Chatbox for meeting & tasks", "Automated handler and team interactions"].map((pt, i) => (
                   <li key={i} className="flex items-start gap-4">
                     <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/20 text-primary">
                       <CheckCircle2 className="h-4 w-4" />
@@ -706,6 +743,13 @@ export default function HomePage() {
               </div>
 
               <div className="flex flex-col items-center gap-4">
+                {/* Razorpay-required pricing clarity */}
+                <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-5 py-2 text-base font-bold text-primary mb-2">
+                  Paid Admin Plan: ₹99 for 3 Months
+                </div>
+                <p className="text-sm text-muted-foreground -mt-2 mb-2">
+                  One-time payment, non-recurring · Full admin dashboard access for 90 days
+                </p>
                 <Button asChild className="h-14 md:h-16 rounded-full bg-primary px-8 md:px-10 text-lg md:text-xl font-bold text-primary-foreground hover:opacity-90 hover:scale-105 transition-transform active:scale-95 shadow-md hover:shadow-xl">
                   <Link href="/signup">
                     Unlock Premium Access <ArrowRight className="ml-2 h-5 w-5" />
@@ -720,7 +764,7 @@ export default function HomePage() {
         </section>
 
         {/* BOTTOM CTA FOOTER */}
-        <footer id="admin-workspace" className="relative z-10 footer py-20 px-4 text-center border-t border-border md:mt-10 mb-10 overflow-hidden">
+        <section id="admin-workspace" className="relative z-10 py-20 px-4 text-center border-t border-border md:mt-10 overflow-hidden">
           <ScrollReveal delay={100} className="max-w-4xl mx-auto flex flex-col items-center">
             <h2 className="text-4xl md:text-6xl font-black text-foreground tracking-tight mb-8">
               Ready to Stop Managing and <span className="text-primary">Start Finishing?</span>
@@ -729,7 +773,10 @@ export default function HomePage() {
               <a href="#">Start Free Today <ArrowRight className="ml-2 h-5 w-5" /></a>
             </Button>
           </ScrollReveal>
-        </footer>
+        </section>
+
+        {/* GLOBAL FOOTER — visible on every page */}
+        <GlobalFooter />
       </div>
     </main>
   );
